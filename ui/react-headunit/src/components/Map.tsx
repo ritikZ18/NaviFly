@@ -19,14 +19,21 @@ const Map: React.FC = () => {
     const vehicleMarkerRef = useRef<maplibregl.Marker | null>(null);
     const [locations, setLocations] = useState<Location[]>([]);
     const [mapLoaded, setMapLoaded] = useState(false);
+    const routesInitialized = useRef(false);
+    const initialFitDone = useRef(false);
 
     const {
         startId, endId, roadGeometry, alternativeRoutes, selectedRouteIndex,
         isNavigating, simulation, vehicle, selectRoute, setRoadGeometry, setAlternativeRoutes
     } = useRoute();
 
-    // Fetch locations
+    const hasFetchedLocations = useRef(false);
+
+    // Fetch locations ONCE
     useEffect(() => {
+        if (hasFetchedLocations.current) return;
+        hasFetchedLocations.current = true;
+
         const fetchLocations = async () => {
             try {
                 const response = await fetch('http://localhost:8080/locations');
@@ -39,44 +46,73 @@ const Map: React.FC = () => {
         fetchLocations();
     }, []);
 
-    // Initialize map
+    // Initialize map - ONLY ONCE
     useEffect(() => {
-        if (map.current) return;
+        if (map.current || !mapContainer.current) return;
 
-        if (mapContainer.current) {
-            map.current = new maplibregl.Map({
-                container: mapContainer.current,
-                style: {
-                    version: 8,
-                    sources: {
-                        'osm': {
-                            type: 'raster',
-                            tiles: [
-                                'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
-                                'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png',
-                                'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png'
-                            ],
-                            tileSize: 256,
-                            attribution: '© OpenStreetMap contributors'
-                        }
-                    },
-                    layers: [{
-                        id: 'osm',
+        map.current = new maplibregl.Map({
+            container: mapContainer.current,
+            style: {
+                version: 8,
+                sources: {
+                    'osm': {
                         type: 'raster',
-                        source: 'osm',
-                        minzoom: 0,
-                        maxzoom: 19
-                    }]
+                        tiles: [
+                            'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                            'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                            'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png'
+                        ],
+                        tileSize: 256,
+                        attribution: '© OpenStreetMap contributors'
+                    }
                 },
-                center: [-111.9, 34.0],
-                zoom: 6,
-            });
+                layers: [{
+                    id: 'osm',
+                    type: 'raster',
+                    source: 'osm',
+                    minzoom: 0,
+                    maxzoom: 19
+                }]
+            },
+            center: [-111.9, 34.0],
+            zoom: 6,
+        });
 
-            map.current.addControl(new maplibregl.NavigationControl(), 'top-right');
-            map.current.addControl(new maplibregl.ScaleControl({ maxWidth: 100 }), 'bottom-right');
+        map.current.addControl(new maplibregl.NavigationControl(), 'top-right');
+        map.current.addControl(new maplibregl.ScaleControl({ maxWidth: 100 }), 'bottom-right');
 
-            map.current.on('load', () => setMapLoaded(true));
-        }
+        map.current.on('load', () => {
+            setMapLoaded(true);
+            // Initialize empty route sources
+            if (map.current) {
+                map.current.addSource('route-main', {
+                    type: 'geojson',
+                    data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [] } }
+                });
+                map.current.addLayer({
+                    id: 'route-main',
+                    type: 'line',
+                    source: 'route-main',
+                    layout: { 'line-join': 'round', 'line-cap': 'round', 'visibility': 'none' },
+                    paint: { 'line-color': '#007bff', 'line-width': 6, 'line-opacity': 0.9 }
+                });
+
+                for (let i = 0; i < 3; i++) {
+                    map.current.addSource(`route-alt-${i}`, {
+                        type: 'geojson',
+                        data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [] } }
+                    });
+                    map.current.addLayer({
+                        id: `route-alt-${i}`,
+                        type: 'line',
+                        source: `route-alt-${i}`,
+                        layout: { 'line-join': 'round', 'line-cap': 'round', 'visibility': 'none' },
+                        paint: { 'line-color': '#64748b', 'line-width': 4, 'line-opacity': 0.4, 'line-dasharray': [2, 2] }
+                    });
+                }
+                routesInitialized.current = true;
+            }
+        });
 
         return () => {
             if (map.current) {
@@ -106,16 +142,18 @@ const Map: React.FC = () => {
             markersRef.current.push(marker);
         });
 
-        if (locations.length > 1) {
+        // Initial fit
+        if (locations.length > 1 && !initialFitDone.current) {
             const bounds = new maplibregl.LngLatBounds();
             locations.forEach(loc => bounds.extend([loc.lon, loc.lat]));
             map.current.fitBounds(bounds, { padding: 50 });
+            initialFitDone.current = true;
         }
     }, [locations, mapLoaded]);
 
-    // Fetch route with alternatives from OSRM
+    // Fetch route with alternatives
     const fetchRouteWithAlternatives = useCallback(async () => {
-        if (!startId || !endId) return;
+        if (!startId || !endId || startId === endId) return;
 
         const startLoc = locations.find(l => l.id === startId);
         const endLoc = locations.find(l => l.id === endId);
@@ -150,7 +188,7 @@ const Map: React.FC = () => {
         }
     }, [startId, endId, locations, fetchRouteWithAlternatives]);
 
-    // Start marker
+    // Start marker with glow
     useEffect(() => {
         if (!map.current || !mapLoaded) return;
         startMarkerRef.current?.remove();
@@ -160,7 +198,11 @@ const Map: React.FC = () => {
             if (loc) {
                 const el = document.createElement('div');
                 el.className = 'route-marker start-marker';
-                el.innerHTML = `<div class="marker-icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg></div><div class="marker-label">${loc.name}</div>`;
+                el.innerHTML = `
+                    <div class="marker-glow green"></div>
+                    <div class="marker-icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg></div>
+                    <div class="marker-label">${loc.name}</div>
+                `;
                 startMarkerRef.current = new maplibregl.Marker({ element: el })
                     .setLngLat([loc.lon, loc.lat])
                     .addTo(map.current!);
@@ -168,7 +210,7 @@ const Map: React.FC = () => {
         }
     }, [startId, locations, mapLoaded]);
 
-    // End marker
+    // End marker with glow
     useEffect(() => {
         if (!map.current || !mapLoaded) return;
         endMarkerRef.current?.remove();
@@ -178,7 +220,11 @@ const Map: React.FC = () => {
             if (loc) {
                 const el = document.createElement('div');
                 el.className = 'route-marker end-marker';
-                el.innerHTML = `<div class="marker-icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg></div><div class="marker-label">${loc.name}</div>`;
+                el.innerHTML = `
+                    <div class="marker-glow orange"></div>
+                    <div class="marker-icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg></div>
+                    <div class="marker-label">${loc.name}</div>
+                `;
                 endMarkerRef.current = new maplibregl.Marker({ element: el })
                     .setLngLat([loc.lon, loc.lat])
                     .addTo(map.current!);
@@ -186,96 +232,94 @@ const Map: React.FC = () => {
         }
     }, [endId, locations, mapLoaded]);
 
-    // Draw routes (main + alternatives)
+    // Update route data - NO re-adding layers
     useEffect(() => {
-        if (!map.current || !mapLoaded) return;
+        if (!map.current || !mapLoaded || !routesInitialized.current) return;
 
-        // Remove existing route layers
-        ['route-main', 'route-alt-0', 'route-alt-1', 'route-alt-2'].forEach(id => {
-            if (map.current?.getLayer(id)) map.current.removeLayer(id);
-            if (map.current?.getSource(id)) map.current.removeSource(id);
-        });
+        // Update main route
+        const mainSource = map.current.getSource('route-main') as maplibregl.GeoJSONSource;
+        if (mainSource && isNavigating && roadGeometry && roadGeometry.length >= 2) {
+            mainSource.setData({
+                type: 'Feature',
+                properties: {},
+                geometry: { type: 'LineString', coordinates: roadGeometry }
+            });
+            map.current.setLayoutProperty('route-main', 'visibility', 'visible');
+            map.current.setPaintProperty('route-main', 'line-color', selectedRouteIndex === 0 ? '#007bff' : '#64748b');
+            map.current.setPaintProperty('route-main', 'line-opacity', selectedRouteIndex === 0 ? 0.9 : 0.4);
+        } else if (mainSource) {
+            map.current.setLayoutProperty('route-main', 'visibility', 'none');
+        }
 
-        // Draw alternative routes (faint blue, clickable)
-        alternativeRoutes.forEach((alt, index) => {
-            const id = `route-alt-${index}`;
-            map.current!.addSource(id, {
-                type: 'geojson',
-                data: {
-                    type: 'Feature',
-                    properties: { index: index + 1 },
-                    geometry: { type: 'LineString', coordinates: alt.geometry }
-                }
-            });
-            map.current!.addLayer({
-                id,
-                type: 'line',
-                source: id,
-                layout: { 'line-join': 'round', 'line-cap': 'round' },
-                paint: {
-                    'line-color': selectedRouteIndex === index + 1 ? '#007bff' : '#94a3b8',
-                    'line-width': selectedRouteIndex === index + 1 ? 5 : 3,
-                    'line-opacity': selectedRouteIndex === index + 1 ? 0.9 : 0.4
-                }
-            });
-
-            // Click to select
-            map.current!.on('click', id, () => selectRoute(index + 1));
-            map.current!.on('mouseenter', id, () => {
-                map.current!.getCanvas().style.cursor = 'pointer';
-            });
-            map.current!.on('mouseleave', id, () => {
-                map.current!.getCanvas().style.cursor = '';
-            });
-        });
-
-        // Draw main route
-        if (roadGeometry && roadGeometry.length >= 2) {
-            map.current!.addSource('route-main', {
-                type: 'geojson',
-                data: {
+        // Update alternative routes
+        for (let i = 0; i < 3; i++) {
+            const altSource = map.current.getSource(`route-alt-${i}`) as maplibregl.GeoJSONSource;
+            if (altSource && isNavigating && alternativeRoutes[i]) {
+                altSource.setData({
                     type: 'Feature',
                     properties: {},
-                    geometry: { type: 'LineString', coordinates: roadGeometry }
-                }
-            });
-            map.current!.addLayer({
-                id: 'route-main',
-                type: 'line',
-                source: 'route-main',
-                layout: { 'line-join': 'round', 'line-cap': 'round' },
-                paint: {
-                    'line-color': selectedRouteIndex === 0 ? '#007bff' : '#94a3b8',
-                    'line-width': selectedRouteIndex === 0 ? 5 : 3,
-                    'line-opacity': selectedRouteIndex === 0 ? 0.9 : 0.4
-                }
-            });
+                    geometry: { type: 'LineString', coordinates: alternativeRoutes[i].geometry }
+                });
+                map.current.setLayoutProperty(`route-alt-${i}`, 'visibility', 'visible');
+                const isSelected = selectedRouteIndex === i + 1;
+                map.current.setPaintProperty(`route-alt-${i}`, 'line-color', isSelected ? '#007bff' : '#64748b');
+                map.current.setPaintProperty(`route-alt-${i}`, 'line-opacity', isSelected ? 0.9 : 0.4);
+            } else if (altSource) {
+                map.current.setLayoutProperty(`route-alt-${i}`, 'visibility', 'none');
+            }
+        }
 
-            map.current!.on('click', 'route-main', () => selectRoute(0));
-
-            // Fit bounds
+        // Fit bounds once when navigation starts
+        if (isNavigating && roadGeometry && roadGeometry.length >= 2 && !simulation.isRunning) {
             const bounds = new maplibregl.LngLatBounds();
             roadGeometry.forEach(coord => bounds.extend(coord));
-            map.current.fitBounds(bounds, { padding: 80 });
+            map.current.fitBounds(bounds, { padding: 80, duration: 500 });
         }
-    }, [roadGeometry, alternativeRoutes, selectedRouteIndex, mapLoaded, selectRoute]);
+    }, [roadGeometry, alternativeRoutes, selectedRouteIndex, mapLoaded, isNavigating, simulation.isRunning]);
 
-    // Vehicle marker during simulation
+    // Set up click handlers for routes
     useEffect(() => {
         if (!map.current || !mapLoaded) return;
-        vehicleMarkerRef.current?.remove();
+
+        const handleMainClick = () => selectRoute(0);
+        const handleAlt0Click = () => selectRoute(1);
+        const handleAlt1Click = () => selectRoute(2);
+        const handleAlt2Click = () => selectRoute(3);
+
+        map.current.on('click', 'route-main', handleMainClick);
+        map.current.on('click', 'route-alt-0', handleAlt0Click);
+        map.current.on('click', 'route-alt-1', handleAlt1Click);
+        map.current.on('click', 'route-alt-2', handleAlt2Click);
+
+        return () => {
+            if (map.current) {
+                map.current.off('click', 'route-main', handleMainClick);
+                map.current.off('click', 'route-alt-0', handleAlt0Click);
+                map.current.off('click', 'route-alt-1', handleAlt1Click);
+                map.current.off('click', 'route-alt-2', handleAlt2Click);
+            }
+        };
+    }, [mapLoaded, selectRoute]);
+
+    // Vehicle marker - just update position
+    useEffect(() => {
+        if (!map.current || !mapLoaded) return;
 
         if (simulation.isRunning && simulation.currentPosition) {
-            const el = document.createElement('div');
-            el.className = 'vehicle-marker';
-            el.innerHTML = `<span class="vehicle-icon">${vehicle.icon}</span>`;
+            if (vehicleMarkerRef.current) {
+                vehicleMarkerRef.current.setLngLat(simulation.currentPosition);
+            } else {
+                const el = document.createElement('div');
+                el.className = 'vehicle-marker';
+                el.innerHTML = `<span class="vehicle-icon">${vehicle.icon}</span>`;
 
-            vehicleMarkerRef.current = new maplibregl.Marker({ element: el })
-                .setLngLat(simulation.currentPosition)
-                .addTo(map.current!);
-
-            // Center map on vehicle
-            map.current.panTo(simulation.currentPosition, { duration: 100 });
+                vehicleMarkerRef.current = new maplibregl.Marker({ element: el })
+                    .setLngLat(simulation.currentPosition)
+                    .addTo(map.current!);
+            }
+        } else if (!simulation.isRunning && vehicleMarkerRef.current) {
+            vehicleMarkerRef.current.remove();
+            vehicleMarkerRef.current = null;
         }
     }, [simulation.currentPosition, simulation.isRunning, vehicle.icon, mapLoaded]);
 
@@ -292,10 +336,10 @@ const Map: React.FC = () => {
                         <span className="legend-dot orange"></span>
                         <span>End</span>
                     </div>
-                    {alternativeRoutes.length > 0 && (
+                    {isNavigating && alternativeRoutes.length > 0 && (
                         <div className="legend-item">
                             <span className="legend-line faint"></span>
-                            <span>{alternativeRoutes.length} alternatives</span>
+                            <span>{alternativeRoutes.length} alt routes</span>
                         </div>
                     )}
                     {simulation.isRunning && (

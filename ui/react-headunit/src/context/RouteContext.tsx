@@ -68,12 +68,17 @@ const loadState = (): RouteState => {
         const saved = localStorage.getItem(STORAGE_KEY);
         if (saved) {
             const parsed = JSON.parse(saved);
-            // Don't restore simulation state - always start fresh
+            // Don't restore route geometry - fetch fresh
             return {
                 ...defaultState,
-                ...parsed,
-                simulation: defaultSimulationState,
-                vehicle: parsed.vehicle || defaultVehicle
+                startId: parsed.startId || '',
+                endId: parsed.endId || '',
+                vehicle: parsed.vehicle || defaultVehicle,
+                // These should be fetched fresh:
+                roadGeometry: null,
+                alternativeRoutes: [],
+                isNavigating: false,
+                simulation: defaultSimulationState
             };
         }
     } catch (e) {
@@ -84,8 +89,12 @@ const loadState = (): RouteState => {
 
 const saveState = (state: RouteState) => {
     try {
-        // Don't save simulation state
-        const toSave = { ...state, simulation: undefined };
+        // Only save essential state, not route geometry
+        const toSave = {
+            startId: state.startId,
+            endId: state.endId,
+            vehicle: state.vehicle
+        };
         localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
     } catch (e) {
         console.error('Failed to save route state:', e);

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Navigation, MapPin, Radio, Settings as SettingsIcon, Play, Pause, Square, Gauge } from 'lucide-react';
 import LocationSelector from './LocationSelector';
 import SettingsModal, { defaultSettings } from './SettingsModal';
@@ -20,7 +20,8 @@ const NavigationPanel: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [settings, setSettings] = useState<Settings>(defaultSettings);
-    const [speedMultiplier, setSpeedMultiplier] = useState(50);
+    const [speedMultiplier, setSpeedMultiplier] = useState(1);
+    const hasFetched = useRef(false);
 
     const {
         startId, endId, isNavigating, simulation, vehicle, roadGeometry,
@@ -29,8 +30,11 @@ const NavigationPanel: React.FC = () => {
         setSpeedMultiplier: setSimSpeed, clearNavigation
     } = useRoute();
 
-    // Fetch locations
+    // Fetch locations ONCE
     useEffect(() => {
+        if (hasFetched.current) return;
+        hasFetched.current = true;
+
         const fetchLocations = async () => {
             setIsLoading(true);
             setError(null);
@@ -40,7 +44,9 @@ const NavigationPanel: React.FC = () => {
                 const data = await response.json();
                 data.sort((a: Location, b: Location) => a.name.localeCompare(b.name));
                 setLocations(data);
-                if (data.length >= 2 && !startId) {
+
+                // Set defaults if not already set
+                if (data.length >= 2) {
                     const phx = data.find((l: Location) => l.id === 'phx');
                     const tucson = data.find((l: Location) => l.id === 'tucson');
                     setStartId(phx?.id || data[0].id);
@@ -54,7 +60,7 @@ const NavigationPanel: React.FC = () => {
             }
         };
         fetchLocations();
-    }, [setStartId, setEndId, startId]);
+    }, []); // Empty deps - run once
 
     const handleVehicleSelect = (type: VehicleType) => {
         setVehicle(VehicleFactory.create(type));
@@ -71,27 +77,32 @@ const NavigationPanel: React.FC = () => {
         startSimulation();
     };
 
+    const handleSpeedChange = (val: number) => {
+        setSpeedMultiplier(val);
+        setSimSpeed(val);
+    };
+
     const handleStopNavigation = () => {
         stopSimulation();
         clearNavigation();
     };
 
     const formatEta = (minutes: number): string => {
-        if (minutes <= 0) return '--:--';
+        if (!minutes || minutes <= 0) return '--:--';
         const now = new Date();
         now.setMinutes(now.getMinutes() + minutes);
         return now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     };
 
     const formatDuration = (minutes: number): string => {
-        if (minutes <= 0) return '-- min';
+        if (!minutes || minutes <= 0) return '-- min';
         const hrs = Math.floor(minutes / 60);
         const mins = Math.round(minutes % 60);
         return hrs > 0 ? `${hrs}h ${mins}m` : `${mins} min`;
     };
 
     const formatDistance = (km: number): string => {
-        if (km <= 0) return '-- km';
+        if (!km || km <= 0) return '-- km';
         return settings.units === 'miles'
             ? `${(km * 0.621371).toFixed(1)} mi`
             : `${km.toFixed(1)} km`;
@@ -175,7 +186,7 @@ const NavigationPanel: React.FC = () => {
 
             {/* ETA Card */}
             <div className="metrics-group">
-                <div className="eta-label">{formatEta(simulation.eta || 0)}</div>
+                <div className="eta-label">{formatEta(simulation.eta)}</div>
                 <div style={{ opacity: 0.6 }}>Estimated Arrival</div>
                 <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem', justifyContent: 'center' }}>
                     <div>
@@ -197,14 +208,10 @@ const NavigationPanel: React.FC = () => {
                     <span>Speed: {speedMultiplier}x</span>
                     <input
                         type="range"
-                        min="10"
+                        min="1"
                         max="100"
                         value={speedMultiplier}
-                        onChange={(e) => {
-                            const val = parseInt(e.target.value);
-                            setSpeedMultiplier(val);
-                            setSimSpeed(val);
-                        }}
+                        onChange={(e) => handleSpeedChange(parseInt(e.target.value))}
                         className="speed-slider"
                     />
                 </div>
