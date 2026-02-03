@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+
+  routing-service:
+    build: 
+      context: ./services/routing-go
+    ports:
+      - "8080:8080"
+    environment:
+      - REDIS_URL=redis:6379
+    depends_on:
+      - redis
+
+  telemetry-service:
+    build: 
+      context: ./services/telemetry-go
+    ports:
+      - "8081:8081"
+    environment:
+      - REDIS_URL=redis:6379
+    depends_on:
+      - redis
+
+  mapmatch-service:
+    build: 
+      context: ./services/mapmatch-go
+    ports:
+      - "8082:8082"
+
+  ui:
+    build: 
+      context: ./ui/react-headunit
+    ports:
+      - "5173:5173"
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+    volumes:
+      - ./ui/react-headunit:/app
+      - /app/node_modules
+
+  simulator:
+    build: 
+      context: ./analytics/python
+    environment:
+      - TELEMETRY_URL=http://telemetry-service:8081/ingest
+      - ROUTING_URL=http://routing-service:8080/route
+    depends_on:
+      - telemetry-service
+      - routing-service
+     # For demo purposes, we can restart it or run it once
+    restart: on-failure
