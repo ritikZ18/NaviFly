@@ -60,6 +60,7 @@ const NavigationPanel: React.FC = () => {
             }
         };
         fetchLocations();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []); // Empty deps - run once
 
     const handleVehicleSelect = (type: VehicleType) => {

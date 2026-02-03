@@ -3,9 +3,11 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
+	"time"
 	"navifly/routing/internal/routing"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/handlers"
@@ -111,6 +113,60 @@ func GetRoute(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(resp)
 }
 
+// GetRouteQuery handles GET requests with query parameters for the Map component
+func GetRouteQuery(w http.ResponseWriter, r *http.Request) {
+	startID := r.URL.Query().Get("start")
+	endID := r.URL.Query().Get("end")
+	
+	if startID == "" || endID == "" {
+		http.Error(w, "Missing start or end parameter", http.StatusBadRequest)
+		return
+	}
+
+	path, dist := routing.AStar(cityGraph, startID, endID)
+	if len(path) == 0 {
+		http.Error(w, "No route found", http.StatusNotFound)
+		return
+	}
+	
+	// Build response with road_geometry for the Map component
+	type GeoResponse struct {
+		Path         []string        `json:"path"`
+		Distance     float64         `json:"distance"`
+		RoadGeometry [][2]float64    `json:"road_geometry"`
+		Nodes        []*routing.Node `json:"nodes"`
+	}
+	
+	resp := GeoResponse{
+		Path:         path,
+		Distance:     dist,
+		RoadGeometry: make([][2]float64, 0),
+		Nodes:        make([]*routing.Node, 0, len(path)),
+	}
+
+	// Build interpolated road geometry (smooth path between waypoints)
+	for i, id := range path {
+		node := cityGraph.Nodes[id]
+		resp.Nodes = append(resp.Nodes, node)
+		
+		if i == 0 {
+			resp.RoadGeometry = append(resp.RoadGeometry, [2]float64{node.Lat, node.Lon})
+		} else {
+			prevNode := cityGraph.Nodes[path[i-1]]
+			// Interpolate 20 points between waypoints for smooth path
+			for j := 1; j <= 20; j++ {
+				t := float64(j) / 20.0
+				lat := prevNode.Lat + t*(node.Lat-prevNode.Lat)
+				lon := prevNode.Lon + t*(node.Lon-prevNode.Lon)
+				resp.RoadGeometry = append(resp.RoadGeometry, [2]float64{lat, lon})
+			}
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
 // GetLocations returns all available locations for the UI dropdowns
 func GetLocations(w http.ResponseWriter, r *http.Request) {
 	locations := make([]*routing.Node, 0, len(cityGraph.Nodes))
@@ -121,9 +177,43 @@ func GetLocations(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(locations)
 }
 
+// ProxyOSRM proxies requests to OSRM for real road geometry
+func ProxyOSRM(w http.ResponseWriter, r *http.Request) {
+	startID := r.URL.Query().Get("start")
+	endID := r.URL.Query().Get("end")
+	
+	startNode := cityGraph.Nodes[startID]
+	endNode := cityGraph.Nodes[endID]
+	
+	if startNode == nil || endNode == nil {
+		http.Error(w, "Invalid start or end location", http.StatusBadRequest)
+		return
+	}
+	
+	// Build OSRM URL with actual coordinates
+	osrmURL := fmt.Sprintf(
+		"https://router.project-osrm.org/route/v1/driving/%f,%f;%f,%f?alternatives=3&overview=full&geometries=geojson",
+		startNode.Lon, startNode.Lat, endNode.Lon, endNode.Lat,
+	)
+	
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Get(osrmURL)
+	if err != nil {
+		http.Error(w, "OSRM request failed: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+	
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(resp.StatusCode)
+	io.Copy(w, resp.Body)
+}
+
 func main() {
 	r := mux.NewRouter()
 	r.HandleFunc("/route", GetRoute).Methods("POST")
+	r.HandleFunc("/route", GetRouteQuery).Methods("GET")
+	r.HandleFunc("/osrm-route", ProxyOSRM).Methods("GET")
 	r.HandleFunc("/locations", GetLocations).Methods("GET")
 	r.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)

@@ -14,6 +14,13 @@ export interface Vehicle {
     color: string;           // Vehicle marker color
 }
 
+// Break point for map markers
+export interface BreakPoint {
+    position: [number, number];
+    duration: number;  // minutes
+    timestamp: number;
+}
+
 // Vehicle properties for simulation calculations
 export interface SimulationState {
     isRunning: boolean;
@@ -25,6 +32,7 @@ export interface SimulationState {
     distanceRemaining: number; // km
     elapsedTime: number;     // minutes
     breaks: number;          // count of breaks taken
+    breakPoints: BreakPoint[];  // locations where breaks occurred
 }
 
 export const defaultSimulationState: SimulationState = {
@@ -36,5 +44,6 @@ export const defaultSimulationState: SimulationState = {
     eta: 0,
     distanceRemaining: 0,
     elapsedTime: 0,
-    breaks: 0
+    breaks: 0,
+    breakPoints: []
 };

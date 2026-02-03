@@ -159,25 +159,50 @@ const Map: React.FC = () => {
         const endLoc = locations.find(l => l.id === endId);
         if (!startLoc || !endLoc) return;
 
-        const coords = `${startLoc.lon},${startLoc.lat};${endLoc.lon},${endLoc.lat}`;
-        const url = `https://router.project-osrm.org/route/v1/driving/${coords}?alternatives=3&overview=full&geometries=geojson`;
-
+        // Try OSRM proxy first (server-side proxy bypasses CORS)
         try {
-            const response = await fetch(url);
-            const data = await response.json();
+            const proxyUrl = `http://localhost:8080/osrm-route?start=${startId}&end=${endId}`;
+            const response = await fetch(proxyUrl);
+            if (response.ok) {
+                const data = await response.json();
+                if (data.routes && data.routes.length > 0) {
+                    setRoadGeometry(data.routes[0].geometry.coordinates);
 
-            if (data.routes && data.routes.length > 0) {
-                setRoadGeometry(data.routes[0].geometry.coordinates);
-
-                const alternatives = data.routes.slice(1).map((route: any) => ({
-                    geometry: route.geometry.coordinates,
-                    distance: route.distance / 1000,
-                    duration: route.duration / 60
-                }));
-                setAlternativeRoutes(alternatives);
+                    interface OSRMRoute {
+                        geometry: { coordinates: [number, number][] };
+                        distance: number;
+                        duration: number;
+                    }
+                    const alternatives = data.routes.slice(1).map((route: OSRMRoute) => ({
+                        geometry: route.geometry.coordinates,
+                        distance: route.distance / 1000,
+                        duration: route.duration / 60
+                    }));
+                    setAlternativeRoutes(alternatives);
+                    return;
+                }
             }
-        } catch (error) {
-            console.error('OSRM routing failed:', error);
+        } catch (proxyError) {
+            console.warn('OSRM proxy failed, using local routing:', proxyError);
+        }
+
+        // Fallback to local interpolated routing
+        try {
+            const localUrl = `http://localhost:8080/route?start=${startId}&end=${endId}`;
+            const response = await fetch(localUrl);
+            if (response.ok) {
+                const data = await response.json();
+                if (data.road_geometry && data.road_geometry.length > 0) {
+                    // Convert [lat, lon] to [lon, lat] for MapLibre
+                    const coords: [number, number][] = data.road_geometry.map(
+                        (p: [number, number]) => [p[1], p[0]] as [number, number]
+                    );
+                    setRoadGeometry(coords);
+                    setAlternativeRoutes([]);
+                }
+            }
+        } catch (localError) {
+            console.error('All routing failed:', localError);
         }
     }, [startId, endId, locations, setRoadGeometry, setAlternativeRoutes]);
 
@@ -322,6 +347,39 @@ const Map: React.FC = () => {
             vehicleMarkerRef.current = null;
         }
     }, [simulation.currentPosition, simulation.isRunning, vehicle.icon, mapLoaded]);
+
+    // Break point markers - red dots with duration tooltip
+    const breakMarkersRef = useRef<maplibregl.Marker[]>([]);
+
+    useEffect(() => {
+        if (!map.current || !mapLoaded) return;
+
+        // Add new break markers
+        const existingCount = breakMarkersRef.current.length;
+        const newBreaks = simulation.breakPoints.slice(existingCount);
+
+        newBreaks.forEach((bp) => {
+            const el = document.createElement('div');
+            el.className = 'break-marker';
+            el.title = `Break: ${bp.duration} min`;
+
+            const marker = new maplibregl.Marker({ element: el })
+                .setLngLat(bp.position)
+                .setPopup(
+                    new maplibregl.Popup({ offset: 15, closeButton: false })
+                        .setHTML(`<div class="break-popup">🛑 ${bp.duration} min break</div>`)
+                )
+                .addTo(map.current!);
+
+            breakMarkersRef.current.push(marker);
+        });
+
+        // Clear markers when simulation stops
+        if (!simulation.isRunning && breakMarkersRef.current.length > 0) {
+            breakMarkersRef.current.forEach(m => m.remove());
+            breakMarkersRef.current = [];
+        }
+    }, [simulation.breakPoints, simulation.isRunning, mapLoaded]);
 
     return (
         <div className="map-wrapper">

@@ -88,7 +88,8 @@ export class SimulationEngine {
             eta: (this.totalDistance / config.vehicle.avgSpeed) * 60,
             distanceRemaining: this.totalDistance,
             elapsedTime: 0,
-            breaks: 0
+            breaks: 0,
+            breakPoints: []
         };
 
         this.config.onUpdate(this.state);
@@ -157,13 +158,25 @@ export class SimulationEngine {
      * Trigger a random break
      */
     private triggerBreak(): void {
-        if (!this.config) return;
+        if (!this.config || !this.state.currentPosition) return;
 
         this.isOnBreak = true;
         this.state.breaks++;
-        const breakDurationMs = this.config.vehicle.breakDuration * 60000 / (this.config.speedMultiplier || 1);
+        const breakDuration = this.config.vehicle.breakDuration;
+        const breakDurationMs = breakDuration * 60000 / (this.config.speedMultiplier || 1);
 
-        this.config.onBreak(this.config.vehicle.breakDuration);
+        // Record break position
+        this.state.breakPoints = [
+            ...this.state.breakPoints,
+            {
+                position: this.state.currentPosition,
+                duration: breakDuration,
+                timestamp: Date.now()
+            }
+        ];
+
+        this.config.onBreak(breakDuration);
+        this.config.onUpdate(this.state);  // Update with new break point
 
         this.breakTimeout = setTimeout(() => {
             this.isOnBreak = false;

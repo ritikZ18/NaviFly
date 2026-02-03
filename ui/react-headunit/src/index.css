@@ -768,15 +768,150 @@ body {
   font-size: 1rem;
 }
 
-/* Dark/Light Mode */
-.navigation-panel.light {
-  --panel-bg: rgba(245, 245, 245, 0.9);
-  --text-color: #1a1a1a;
-  --glass-border: rgba(0, 0, 0, 0.1);
-  color: var(--text-color);
+/* Break Point Markers */
+.break-marker {
+  width: 16px;
+  height: 16px;
+  background: #ef4444;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.6), 0 2px 6px rgba(0, 0, 0, 0.3);
+  transition: transform 0.2s, box-shadow 0.2s;
 }
 
-.navigation-panel.light .vehicle-btn,
-.navigation-panel.light .btn-control {
+.break-marker:hover {
+  transform: scale(1.3);
+  box-shadow: 0 0 15px rgba(239, 68, 68, 0.8), 0 4px 10px rgba(0, 0, 0, 0.4);
+}
+
+.break-popup {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #ef4444;
+  padding: 4px 8px;
+  white-space: nowrap;
+}
+
+/* Dark/Light Mode */
+.navigation-panel.light {
+  --panel-bg: rgba(255, 255, 255, 0.75);
+  --text-color: #1a1a1a;
+  --glass-border: rgba(0, 0, 0, 0.08);
+  --accent-light: rgba(0, 123, 255, 0.1);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(245, 247, 250, 0.85) 100%);
+  backdrop-filter: blur(20px) saturate(180%);
+  border-right: 1px solid rgba(0, 0, 0, 0.06);
   color: var(--text-color);
+  box-shadow: 4px 0 30px rgba(0, 0, 0, 0.08);
+}
+
+.navigation-panel.light .brand h1 {
+  background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.navigation-panel.light .brand p {
+  color: #64748b;
+}
+
+.navigation-panel.light .vehicle-btn {
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  color: #374151;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.navigation-panel.light .vehicle-btn:hover {
+  background: rgba(255, 255, 255, 1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.navigation-panel.light .vehicle-btn.active {
+  background: linear-gradient(135deg, rgba(0, 123, 255, 0.1) 0%, rgba(0, 123, 255, 0.05) 100%);
+  border-color: #007bff;
+  color: #007bff;
+}
+
+.navigation-panel.light .btn-control {
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  color: #374151;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.navigation-panel.light .btn-control:hover {
+  background: #ffffff;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.navigation-panel.light .btn-primary {
+  background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+  box-shadow: 0 4px 15px rgba(0, 123, 255, 0.3);
+}
+
+.navigation-panel.light .btn-primary:hover {
+  box-shadow: 0 6px 20px rgba(0, 123, 255, 0.4);
+}
+
+.navigation-panel.light .btn-danger {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  box-shadow: 0 4px 15px rgba(239, 68, 68, 0.3);
+}
+
+.navigation-panel.light .metrics-group {
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+}
+
+.navigation-panel.light .eta-label {
+  color: #1a1a1a;
+}
+
+.navigation-panel.light .simulation-info {
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.navigation-panel.light .progress-bar {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.navigation-panel.light .speed-control {
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  color: #374151;
+}
+
+.navigation-panel.light .loading-state,
+.navigation-panel.light .error-state {
+  color: #64748b;
+}
+
+.navigation-panel.light .footer-icons {
+  color: #94a3b8;
+}
+
+.navigation-panel.light .footer-icons>*:hover {
+  color: #007bff;
+}
+
+.navigation-panel.light .location-selector select {
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  color: #1a1a1a;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.navigation-panel.light .location-selector select:focus {
+  border-color: #007bff;
+  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+}
+
+.navigation-panel.light .selector-label,
+.navigation-panel.light .location-label {
+  color: #64748b;
 }
