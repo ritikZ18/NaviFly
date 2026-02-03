@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useRoute } from '../context/RouteContext';
+import RouteLoader from './RouteLoader';
 
 interface Location {
     id: string;
@@ -24,7 +25,8 @@ const Map: React.FC = () => {
 
     const {
         startId, endId, roadGeometry, alternativeRoutes, selectedRouteIndex,
-        isNavigating, simulation, vehicle, selectRoute, setRoadGeometry, setAlternativeRoutes
+        isNavigating, simulation, vehicle, selectRoute, setRoadGeometry, setAlternativeRoutes,
+        isStartingNavigation
     } = useRoute();
 
     const hasFetchedLocations = useRef(false);
@@ -408,6 +410,7 @@ const Map: React.FC = () => {
                     )}
                 </div>
             </div>
+            {isStartingNavigation && <RouteLoader message="Finding best route..." />}
         </div>
     );
 };

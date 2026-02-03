@@ -1,0 +1,109 @@
+.route-loader-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(10px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+.route-loader-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 24px;
+}
+
+.route-loader-canvas {
+    border-radius: 16px;
+    background: linear-gradient(145deg, rgba(20, 30, 48, 0.9), rgba(10, 15, 25, 0.95));
+    box-shadow:
+        0 0 60px rgba(0, 123, 255, 0.3),
+        0 0 100px rgba(0, 200, 255, 0.1),
+        inset 0 0 60px rgba(0, 123, 255, 0.05);
+    border: 1px solid rgba(0, 200, 255, 0.2);
+}
+
+.route-loader-text {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.route-loader-message {
+    font-size: 1.2rem;
+    font-weight: 500;
+    color: #fff;
+    text-shadow: 0 0 10px rgba(0, 200, 255, 0.5);
+    letter-spacing: 0.5px;
+}
+
+.route-loader-dots {
+    display: flex;
+}
+
+.route-loader-dots span {
+    font-size: 1.5rem;
+    color: #00c6ff;
+    animation: dotPulse 1.4s ease-in-out infinite;
+}
+
+.route-loader-dots span:nth-child(1) {
+    animation-delay: 0s;
+}
+
+.route-loader-dots span:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.route-loader-dots span:nth-child(3) {
+    animation-delay: 0.4s;
+}
+
+@keyframes dotPulse {
+
+    0%,
+    60%,
+    100% {
+        opacity: 0.3;
+        transform: translateY(0);
+    }
+
+    30% {
+        opacity: 1;
+        transform: translateY(-4px);
+    }
+}
+
+/* Light mode */
+.route-loader-overlay.light {
+    background: rgba(255, 255, 255, 0.9);
+}
+
+.route-loader-overlay.light .route-loader-canvas {
+    background: linear-gradient(145deg, rgba(240, 245, 250, 0.95), rgba(220, 230, 240, 0.95));
+    box-shadow:
+        0 0 60px rgba(0, 123, 255, 0.2),
+        0 0 100px rgba(0, 200, 255, 0.05);
+}
+
+.route-loader-overlay.light .route-loader-message {
+    color: #1a1a2e;
+    text-shadow: none;
+}

@@ -27,12 +27,14 @@ const NavigationPanel: React.FC = () => {
         startId, endId, isNavigating, simulation, vehicle, roadGeometry,
         setStartId, setEndId, setIsNavigating, setVehicle,
         startSimulation, pauseSimulation, resumeSimulation, stopSimulation,
-        setSpeedMultiplier: setSimSpeed, clearNavigation
+        setSpeedMultiplier: setSimSpeed, clearNavigation, setIsStartingNavigation
     } = useRoute();
 
     // Fetch locations ONCE
     useEffect(() => {
         if (hasFetched.current) return;
+        // ... (rest is same)
+
         hasFetched.current = true;
 
         const fetchLocations = async () => {
@@ -45,13 +47,7 @@ const NavigationPanel: React.FC = () => {
                 data.sort((a: Location, b: Location) => a.name.localeCompare(b.name));
                 setLocations(data);
 
-                // Set defaults if not already set
-                if (data.length >= 2) {
-                    const phx = data.find((l: Location) => l.id === 'phx');
-                    const tucson = data.find((l: Location) => l.id === 'tucson');
-                    setStartId(phx?.id || data[0].id);
-                    setEndId(tucson?.id || data[1].id);
-                }
+                // Do NOT set defaults - let user select (or load from localStorage)
             } catch (err) {
                 setError('Unable to load locations');
                 console.error(err);
@@ -69,7 +65,17 @@ const NavigationPanel: React.FC = () => {
 
     const handleStartNavigation = () => {
         if (!startId || !endId || startId === endId) return;
-        setIsNavigating(true);
+
+        // Trigger cinematic loader
+        setIsStartingNavigation(true);
+
+        // Wait for loader animation (2s)
+        setTimeout(() => {
+            setIsStartingNavigation(false);
+            setIsNavigating(true);
+            // Auto-start simulation when navigation begins
+            startSimulation();
+        }, 2000);
     };
 
     const handleStartSimulation = () => {

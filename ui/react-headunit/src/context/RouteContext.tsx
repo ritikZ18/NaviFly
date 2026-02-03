@@ -44,6 +44,8 @@ interface RouteContextType extends RouteState {
     stopSimulation: () => void;
     setSpeedMultiplier: (speed: number) => void;
     clearNavigation: () => void;
+    isStartingNavigation: boolean;
+    setIsStartingNavigation: (isStarting: boolean) => void;
 }
 
 const STORAGE_KEY = 'navifly-route-state';
@@ -69,16 +71,16 @@ const loadState = (): RouteState => {
         const saved = localStorage.getItem(STORAGE_KEY);
         if (saved) {
             const parsed = JSON.parse(saved);
-            // Don't restore route geometry - fetch fresh
+            // Restore navigation state but fetch fresh route geometry
             return {
                 ...defaultState,
                 startId: parsed.startId || '',
                 endId: parsed.endId || '',
                 vehicle: parsed.vehicle || defaultVehicle,
+                isNavigating: parsed.isNavigating || false,  // Persist navigation state
                 // These should be fetched fresh:
                 roadGeometry: null,
                 alternativeRoutes: [],
-                isNavigating: false,
                 simulation: defaultSimulationState
             };
         }
@@ -90,11 +92,12 @@ const loadState = (): RouteState => {
 
 const saveState = (state: RouteState) => {
     try {
-        // Only save essential state, not route geometry
+        // Save essential state including navigation status
         const toSave = {
             startId: state.startId,
             endId: state.endId,
-            vehicle: state.vehicle
+            vehicle: state.vehicle,
+            isNavigating: state.isNavigating
         };
         localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
     } catch (e) {
@@ -104,6 +107,7 @@ const saveState = (state: RouteState) => {
 
 export const RouteProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const [state, setState] = useState<RouteState>(loadState);
+    const [isStartingNavigation, setIsStartingNavigation] = useState(false);
     const simulationRef = useRef<SimulationEngine | null>(null);
 
     useEffect(() => {
@@ -210,7 +214,9 @@ export const RouteProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             resumeSimulation,
             stopSimulation,
             setSpeedMultiplier,
-            clearNavigation
+            clearNavigation,
+            isStartingNavigation,
+            setIsStartingNavigation
         }}>
             {children}
         </RouteContext.Provider>
