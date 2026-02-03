@@ -114,6 +114,14 @@ export const RouteProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         saveState(state);
     }, [state]);
 
+    // Update simulation route when geometry changes (e.g. from interpolated to OSRM)
+    useEffect(() => {
+        if (simulationRef.current && state.roadGeometry && state.roadGeometry.length > 0) {
+            // Hot-update the route if simulation is running
+            simulationRef.current.updateRoute(state.roadGeometry);
+        }
+    }, [state.roadGeometry]);
+
     // Initialize simulation engine
     useEffect(() => {
         simulationRef.current = new SimulationEngine();

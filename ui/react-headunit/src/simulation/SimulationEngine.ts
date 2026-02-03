@@ -244,6 +244,34 @@ export class SimulationEngine {
     }
 
     /**
+     * Update route dynamically while running
+     */
+    updateRoute(route: [number, number][]): void {
+        if (!this.config || !this.state.isRunning) return;
+
+        // Update config with new route
+        this.config.route = route;
+
+        // Recalculate total distance for the new route
+        this.totalDistance = this.calculateTotalDistance(route);
+        this.state.distanceRemaining = Math.max(0, this.totalDistance - this.coveredDistance);
+
+        // Force an immediate position update based on existing coveredDistance
+        // This 'snaps' the vehicle to the correct spot on the new higher-fidelity road
+        // instead of staying on the old interpolated line.
+        let accumulatedDistance = 0;
+        for (let i = 1; i < route.length; i++) {
+            const segmentDistance = this.haversineDistance(route[i - 1], route[i]);
+            if (accumulatedDistance + segmentDistance >= this.coveredDistance) {
+                const segmentProgress = (this.coveredDistance - accumulatedDistance) / segmentDistance;
+                this.state.currentPosition = this.interpolate(route[i - 1], route[i], Math.min(1, segmentProgress));
+                break;
+            }
+            accumulatedDistance += segmentDistance;
+        }
+    }
+
+    /**
      * Get current state
      */
     getState(): SimulationState {
