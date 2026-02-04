@@ -38,3 +38,9 @@ Once complete, the platform is available at:
 - **Backend**: Go (Golang), Gorilla Mux (High concurrency).
 - **Data**: Redis (Real-time caching & state).
 - **Automation**: GitHub Actions (CI/CD), Docker Compose.
+
+## IMAGES : 
+<img width="2184" height="1883" alt="Screenshot 2026-02-03 150059" src="https://github.com/user-attachments/assets/00642798-4bb6-45b9-96ac-5ae2fdec729b" />
+<img width="2184" height="1883" alt="Screenshot 2026-02-03 150042" src="https://github.com/user-attachments/assets/3597069e-a88d-4893-b00d-012f27f11b96" />
+<img width="2184" height="1883" alt="Screenshot 2026-02-03 150049" src="https://github.com/user-attachments/assets/f93d706e-34b2-4b94-b3c8-2b9cb5051364" />
+
