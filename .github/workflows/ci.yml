@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [main]
 
+# Required for pushing to GitHub Container Registry (ghcr.io)
+permissions:
+  contents: read
+  packages: write
+
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
