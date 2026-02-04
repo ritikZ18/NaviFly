@@ -495,6 +495,41 @@ body {
   border-left: 3px solid #f59e0b;
 }
 
+/* Marker Glow Effect */
+.marker-glow {
+  position: absolute;
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  animation: pulse-glow 2s ease-in-out infinite;
+  z-index: -1;
+}
+
+.marker-glow.green {
+  background: radial-gradient(circle, rgba(34, 197, 94, 0.6) 0%, rgba(34, 197, 94, 0) 70%);
+}
+
+.marker-glow.orange {
+  background: radial-gradient(circle, rgba(245, 158, 11, 0.6) 0%, rgba(245, 158, 11, 0) 70%);
+}
+
+@keyframes pulse-glow {
+
+  0%,
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0.8;
+  }
+
+  50% {
+    transform: translate(-50%, -50%) scale(1.3);
+    opacity: 0.4;
+  }
+}
+
 /* Legend colors */
 .legend-dot.green {
   background: #22c55e;
@@ -511,4 +546,372 @@ body {
   height: 4px;
   background: var(--accent-color);
   border-radius: 2px;
+}
+
+.legend-line.faint {
+  background: #94a3b8;
+  opacity: 0.5;
+}
+
+/* Vehicle Selector */
+.vehicle-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.selector-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  opacity: 0.7;
+}
+
+.vehicle-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.vehicle-btn {
+  flex: 1;
+  background: rgba(40, 40, 40, 0.6);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  padding: 0.75rem 0.5rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  color: white;
+}
+
+.vehicle-btn:hover {
+  background: rgba(60, 60, 60, 0.8);
+}
+
+.vehicle-btn.active {
+  background: rgba(0, 123, 255, 0.2);
+  border-color: var(--accent-color);
+}
+
+.vehicle-btn .vehicle-icon {
+  font-size: 1.5rem;
+}
+
+.vehicle-btn .vehicle-name {
+  font-size: 0.65rem;
+  opacity: 0.7;
+}
+
+/* Simulation Info */
+.simulation-info {
+  background: rgba(40, 40, 40, 0.4);
+  border-radius: 12px;
+  padding: 1rem;
+}
+
+.progress-bar {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 0.75rem;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #22c55e, #007bff);
+  border-radius: 3px;
+  transition: width 0.1s linear;
+}
+
+.simulation-stats {
+  display: flex;
+  justify-content: space-around;
+  text-align: center;
+}
+
+.simulation-stats .stat-value {
+  display: block;
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+.simulation-stats .stat-label {
+  font-size: 0.7rem;
+  opacity: 0.6;
+}
+
+/* Speed Control */
+.speed-control {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  background: rgba(40, 40, 40, 0.4);
+  border-radius: 8px;
+  font-size: 0.8rem;
+}
+
+.speed-slider {
+  flex: 1;
+  accent-color: var(--accent-color);
+}
+
+/* Action Buttons */
+.action-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: auto;
+}
+
+.btn-primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-danger {
+  background: #dc2626;
+  color: white;
+  border: none;
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.simulation-controls {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.btn-control {
+  flex: 1;
+  background: rgba(40, 40, 40, 0.8);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  padding: 0.75rem;
+  cursor: pointer;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-control:hover {
+  background: rgba(60, 60, 60, 0.8);
+}
+
+.btn-control.btn-stop {
+  background: rgba(220, 38, 38, 0.3);
+  border-color: #dc2626;
+}
+
+/* Footer Icons */
+.footer-icons {
+  display: flex;
+  justify-content: space-between;
+  padding-top: 1rem;
+  opacity: 0.5;
+}
+
+.footer-icons>* {
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.footer-icons>*:hover {
+  opacity: 1;
+}
+
+/* Loading/Error States */
+.loading-state,
+.error-state {
+  padding: 1rem;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.9rem;
+}
+
+.error-state {
+  color: #f87171;
+}
+
+/* Vehicle Marker */
+.vehicle-marker {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.8);
+  border: 2px solid var(--accent-color);
+  border-radius: 50%;
+  box-shadow: 0 2px 10px rgba(0, 123, 255, 0.5);
+}
+
+.vehicle-marker .vehicle-icon {
+  font-size: 1.5rem;
+}
+
+.vehicle-icon-small {
+  font-size: 1rem;
+}
+
+/* Break Point Markers */
+.break-marker {
+  width: 16px;
+  height: 16px;
+  background: #ef4444;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.6), 0 2px 6px rgba(0, 0, 0, 0.3);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.break-marker:hover {
+  transform: scale(1.3);
+  box-shadow: 0 0 15px rgba(239, 68, 68, 0.8), 0 4px 10px rgba(0, 0, 0, 0.4);
+}
+
+.break-popup {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #ef4444;
+  padding: 4px 8px;
+  white-space: nowrap;
+}
+
+/* Dark/Light Mode */
+.navigation-panel.light {
+  --panel-bg: rgba(255, 255, 255, 0.75);
+  --text-color: #1a1a1a;
+  --glass-border: rgba(0, 0, 0, 0.08);
+  --accent-light: rgba(0, 123, 255, 0.1);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(245, 247, 250, 0.85) 100%);
+  backdrop-filter: blur(20px) saturate(180%);
+  border-right: 1px solid rgba(0, 0, 0, 0.06);
+  color: var(--text-color);
+  box-shadow: 4px 0 30px rgba(0, 0, 0, 0.08);
+}
+
+.navigation-panel.light .brand h1 {
+  background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.navigation-panel.light .brand p {
+  color: #64748b;
+}
+
+.navigation-panel.light .vehicle-btn {
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  color: #374151;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.navigation-panel.light .vehicle-btn:hover {
+  background: rgba(255, 255, 255, 1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.navigation-panel.light .vehicle-btn.active {
+  background: linear-gradient(135deg, rgba(0, 123, 255, 0.1) 0%, rgba(0, 123, 255, 0.05) 100%);
+  border-color: #007bff;
+  color: #007bff;
+}
+
+.navigation-panel.light .btn-control {
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  color: #374151;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.navigation-panel.light .btn-control:hover {
+  background: #ffffff;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.navigation-panel.light .btn-primary {
+  background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+  box-shadow: 0 4px 15px rgba(0, 123, 255, 0.3);
+}
+
+.navigation-panel.light .btn-primary:hover {
+  box-shadow: 0 6px 20px rgba(0, 123, 255, 0.4);
+}
+
+.navigation-panel.light .btn-danger {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  box-shadow: 0 4px 15px rgba(239, 68, 68, 0.3);
+}
+
+.navigation-panel.light .metrics-group {
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+}
+
+.navigation-panel.light .eta-label {
+  color: #1a1a1a;
+}
+
+.navigation-panel.light .simulation-info {
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.navigation-panel.light .progress-bar {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.navigation-panel.light .speed-control {
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  color: #374151;
+}
+
+.navigation-panel.light .loading-state,
+.navigation-panel.light .error-state {
+  color: #64748b;
+}
+
+.navigation-panel.light .footer-icons {
+  color: #94a3b8;
+}
+
+.navigation-panel.light .footer-icons>*:hover {
+  color: #007bff;
+}
+
+.navigation-panel.light .location-selector select {
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  color: #1a1a1a;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.navigation-panel.light .location-selector select:focus {
+  border-color: #007bff;
+  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+}
+
+.navigation-panel.light .selector-label,
+.navigation-panel.light .location-label {
+  color: #64748b;
 }

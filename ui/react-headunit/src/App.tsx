@@ -1,10 +1,25 @@
-import React from 'react'
+import { useState, useEffect } from 'react'
 import Map from './components/Map'
 import NavigationPanel from './components/NavigationPanel'
 import { RouteProvider } from './context/RouteContext'
 import './index.css'
 
 function App() {
+  const [currentTime, setCurrentTime] = useState(new Date())
+
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000)
+    return () => clearInterval(timer)
+  }, [])
+
+  const formatTime = (date: Date) => {
+    return date.toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    })
+  }
+
   return (
     <RouteProvider>
       <div className="head-unit-container">
@@ -20,9 +35,13 @@ function App() {
             borderRadius: '50px',
             backdropFilter: 'blur(5px)',
             border: '1px solid rgba(255,255,255,0.1)',
-            fontSize: '0.8rem'
+            fontSize: '0.8rem',
+            textAlign: 'center'
           }}>
-            GPS: FIXED • Arizona
+            <div>GPS: FIXED • Arizona</div>
+            <div style={{ fontSize: '0.75rem', opacity: 0.8, marginTop: '4px' }}>
+              {formatTime(currentTime)}
+            </div>
           </div>
         </div>
       </div>
