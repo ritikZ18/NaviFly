@@ -25,7 +25,7 @@ const Map: React.FC = () => {
 
     const {
         startId, endId, roadGeometry, alternativeRoutes, selectedRouteIndex,
-        isNavigating, simulation, vehicle, selectRoute, setRoadGeometry, setAlternativeRoutes,
+        isNavigating, simulation, vehicle, selectRoute, setRoadGeometry, setOptimalGeometry, setAlternativeRoutes,
         isStartingNavigation
     } = useRoute();
 
@@ -157,56 +157,91 @@ const Map: React.FC = () => {
     const fetchRouteWithAlternatives = useCallback(async () => {
         if (!startId || !endId || startId === endId) return;
 
+        let isHighQualityActive = false;
+
+        // Check Cache First
+        const cacheKey = `route-cache-${startId}-${endId}`;
+        const cached = localStorage.getItem(cacheKey);
+        if (cached) {
+            try {
+                const data = JSON.parse(cached);
+                if (data.optimal) {
+                    setOptimalGeometry(data.optimal);
+                    setAlternativeRoutes(data.alternatives);
+                    console.log('Loaded route from cache');
+                    if (data.optimal.type === 'FeatureCollection') {
+                        isHighQualityActive = true;
+                    }
+                }
+            } catch (e) {
+                console.warn('Failed to parse cached route:', e);
+            }
+        }
+
         const startLoc = locations.find(l => l.id === startId);
         const endLoc = locations.find(l => l.id === endId);
         if (!startLoc || !endLoc) return;
 
-        // Try OSRM proxy first (server-side proxy bypasses CORS)
+        // Optimistic first pass: Try local interpolation immediately to show SOMETHING
+        // ONLY if we don't have high-quality data from cache
+        if (!isHighQualityActive) {
+            try {
+                const localUrl = `http://localhost:8080/route?start=${startId}&end=${endId}`;
+                const response = await fetch(localUrl);
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.road_geometry && data.road_geometry.length > 0) {
+                        const coords: [number, number][] = data.road_geometry.map(
+                            (p: [number, number]) => [p[1], p[0]] as [number, number]
+                        );
+                        setRoadGeometry({
+                            type: 'Feature',
+                            properties: { quality: 'interpolated' },
+                            geometry: { type: 'LineString', coordinates: coords }
+                        } as any);
+                    }
+                }
+            } catch (e) {
+                console.warn('Local interpolation failed:', e);
+            }
+        }
+
+        // Second pass: Try OSRM proxy for "Optimal" path (always background update for traffic)
         try {
             const proxyUrl = `http://localhost:8080/osrm-route?start=${startId}&end=${endId}`;
             const response = await fetch(proxyUrl);
             if (response.ok) {
                 const data = await response.json();
                 if (data.routes && data.routes.length > 0) {
-                    setRoadGeometry(data.routes[0].geometry.coordinates);
+                    const bestRoute = data.routes[0];
+                    setOptimalGeometry(bestRoute.geometry);
 
-                    interface OSRMRoute {
-                        geometry: { coordinates: [number, number][] };
+                    interface EnhancedRoute {
+                        geometry: any;
                         distance: number;
                         duration: number;
+                        label: string;
                     }
-                    const alternatives = data.routes.slice(1).map((route: OSRMRoute) => ({
-                        geometry: route.geometry.coordinates,
+                    const alternatives = data.routes.slice(1).map((route: EnhancedRoute) => ({
+                        label: route.label,
+                        geometry: route.geometry,
                         distance: route.distance / 1000,
                         duration: route.duration / 60
                     }));
                     setAlternativeRoutes(alternatives);
-                    return;
+
+                    // Save to Cache
+                    localStorage.setItem(cacheKey, JSON.stringify({
+                        optimal: bestRoute.geometry,
+                        alternatives: alternatives,
+                        timestamp: Date.now()
+                    }));
                 }
             }
         } catch (proxyError) {
-            console.warn('OSRM proxy failed, using local routing:', proxyError);
+            console.warn('OSRM proxy failed, adhering to persistent geometry:', proxyError);
         }
-
-        // Fallback to local interpolated routing
-        try {
-            const localUrl = `http://localhost:8080/route?start=${startId}&end=${endId}`;
-            const response = await fetch(localUrl);
-            if (response.ok) {
-                const data = await response.json();
-                if (data.road_geometry && data.road_geometry.length > 0) {
-                    // Convert [lat, lon] to [lon, lat] for MapLibre
-                    const coords: [number, number][] = data.road_geometry.map(
-                        (p: [number, number]) => [p[1], p[0]] as [number, number]
-                    );
-                    setRoadGeometry(coords);
-                    setAlternativeRoutes([]);
-                }
-            }
-        } catch (localError) {
-            console.error('All routing failed:', localError);
-        }
-    }, [startId, endId, locations, setRoadGeometry, setAlternativeRoutes]);
+    }, [startId, endId, locations, setRoadGeometry, setOptimalGeometry, setAlternativeRoutes]);
 
     // Fetch routes when start/end changes
     useEffect(() => {
@@ -265,15 +300,27 @@ const Map: React.FC = () => {
 
         // Update main route
         const mainSource = map.current.getSource('route-main') as maplibregl.GeoJSONSource;
-        if (mainSource && isNavigating && roadGeometry && roadGeometry.length >= 2) {
-            mainSource.setData({
-                type: 'Feature',
-                properties: {},
-                geometry: { type: 'LineString', coordinates: roadGeometry }
-            });
+        if (mainSource && isNavigating && roadGeometry) {
+            // roadGeometry might be FeatureCollection now
+            mainSource.setData(roadGeometry as any);
             map.current.setLayoutProperty('route-main', 'visibility', 'visible');
-            map.current.setPaintProperty('route-main', 'line-color', selectedRouteIndex === 0 ? '#007bff' : '#64748b');
-            map.current.setPaintProperty('route-main', 'line-opacity', selectedRouteIndex === 0 ? 0.9 : 0.4);
+
+            // Apply traffic colors if it's a FeatureCollection
+            const isFC = (roadGeometry as any).type === 'FeatureCollection';
+            if (isFC) {
+                map.current.setPaintProperty('route-main', 'line-color', [
+                    'match',
+                    ['get', 'congestion'],
+                    'low', '#22c55e',
+                    'moderate', '#eab308',
+                    'high', '#ef4444',
+                    '#007bff'
+                ]);
+                map.current.setPaintProperty('route-main', 'line-opacity', 1.0);
+            } else {
+                map.current.setPaintProperty('route-main', 'line-color', selectedRouteIndex === 0 ? '#007bff' : '#64748b');
+                map.current.setPaintProperty('route-main', 'line-opacity', selectedRouteIndex === 0 ? 0.9 : 0.4);
+            }
         } else if (mainSource) {
             map.current.setLayoutProperty('route-main', 'visibility', 'none');
         }
@@ -282,25 +329,50 @@ const Map: React.FC = () => {
         for (let i = 0; i < 3; i++) {
             const altSource = map.current.getSource(`route-alt-${i}`) as maplibregl.GeoJSONSource;
             if (altSource && isNavigating && alternativeRoutes[i]) {
-                altSource.setData({
-                    type: 'Feature',
-                    properties: {},
-                    geometry: { type: 'LineString', coordinates: alternativeRoutes[i].geometry }
-                });
+                altSource.setData(alternativeRoutes[i].geometry as any);
                 map.current.setLayoutProperty(`route-alt-${i}`, 'visibility', 'visible');
+
                 const isSelected = selectedRouteIndex === i + 1;
-                map.current.setPaintProperty(`route-alt-${i}`, 'line-color', isSelected ? '#007bff' : '#64748b');
-                map.current.setPaintProperty(`route-alt-${i}`, 'line-opacity', isSelected ? 0.9 : 0.4);
+                const isFC = (alternativeRoutes[i].geometry as any).type === 'FeatureCollection';
+
+                if (isFC && isSelected) {
+                    map.current.setPaintProperty(`route-alt-${i}`, 'line-color', [
+                        'match',
+                        ['get', 'congestion'],
+                        'low', '#22c55e',
+                        'moderate', '#eab308',
+                        'high', '#ef4444',
+                        '#007bff'
+                    ]);
+                    map.current.setPaintProperty(`route-alt-${i}`, 'line-opacity', 1.0);
+                } else if (isSelected) {
+                    map.current.setPaintProperty(`route-alt-${i}`, 'line-color', '#007bff');
+                    map.current.setPaintProperty(`route-alt-${i}`, 'line-opacity', 0.9);
+                } else {
+                    map.current.setPaintProperty(`route-alt-${i}`, 'line-color', '#64748b');
+                    map.current.setPaintProperty(`route-alt-${i}`, 'line-opacity', 0.4);
+                }
             } else if (altSource) {
                 map.current.setLayoutProperty(`route-alt-${i}`, 'visibility', 'none');
             }
         }
 
         // Fit bounds once when navigation starts
-        if (isNavigating && roadGeometry && roadGeometry.length >= 2 && !simulation.isRunning) {
-            const bounds = new maplibregl.LngLatBounds();
-            roadGeometry.forEach(coord => bounds.extend(coord));
-            map.current.fitBounds(bounds, { padding: 80, duration: 500 });
+        if (isNavigating && roadGeometry && !simulation.isRunning) {
+            let coords: [number, number][] = [];
+            if (Array.isArray(roadGeometry)) {
+                coords = roadGeometry;
+            } else if ((roadGeometry as any).type === 'FeatureCollection') {
+                coords = (roadGeometry as any).features.flatMap((f: any) => f.geometry.coordinates);
+            } else if ((roadGeometry as any).type === 'Feature') {
+                coords = (roadGeometry as any).geometry.coordinates;
+            }
+
+            if (coords.length >= 2) {
+                const bounds = new maplibregl.LngLatBounds();
+                coords.forEach((coord: [number, number]) => bounds.extend(coord));
+                map.current.fitBounds(bounds, { padding: 80, duration: 500 });
+            }
         }
     }, [roadGeometry, alternativeRoutes, selectedRouteIndex, mapLoaded, isNavigating, simulation.isRunning]);
 

@@ -56,7 +56,11 @@ Use [Caddy](https://caddyserver.com/) or [Nginx Proxy Manager](https://nginxprox
 
 | Service | Free Provider | Monthly Limit |
 | :--- | :--- | :--- |
-| **Compute/Docker** | **Oracle Cloud** | 4 CPUs / 24GB RAM (Hard to beat) |
-| **Stateless APIs** | **Render** | 750 hours (Go/Docker) |
+| **Compute/Docker** | **Oracle Cloud** | 4 CPUs / 24GB RAM (Ideal for pre-calculation) |
+| **Database (SQL)** | **Supabase / Render** | ~500MB (JSONB is space-efficient) |
+| **Go Services** | **Render** | 750 hours (Go/Docker) |
 | **Frontend** | **Netlify / Vercel** | Unlimited personal use |
-| **Database** | **Upstash Redis** | 10k requests/day |
+| **Redis** | **Upstash Redis** | 10k requests/day |
+
+### ⚡ Performance Note
+The **Pre-calculation Routine** runs at system startup. If deploying to a server with limited CPU, increase the `time.Sleep` in `main.go` to avoid rate-limiting by the OSRM demo server. On Oracle Cloud ARM instances, the default settings work perfectly.

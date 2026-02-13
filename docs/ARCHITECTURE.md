@@ -8,16 +8,15 @@ NaviFly follows a distributed microservices architecture designed for scalabilit
 graph TD
     UI[React Headunit] <--> Routing[Routing Service]
     UI <--> Telemetry[Telemetry Service]
-    API[MapMatch Service] --> UI
     
     Sim[Python Simulator] -- Ingest --> Telemetry
     Telemetry <--> Redis[(Redis State Store)]
-    Routing <--> OSRM[External OSRM API]
+    Routing <--> DB[(PostgreSQL Route Cache)]
+    Routing -. Fallback .-> OSRM[External OSRM API]
     
     subgraph "Backend Services (Go)"
         Routing
         Telemetry
-        API
     end
 ```
 
@@ -29,14 +28,14 @@ graph TD
 - **State Mgmt**: React Context API (`RouteContext`) for unified vehicle and navigation state.
 
 ### 2. Routing Service (Go)
-- **A* Algorithm**: Implements a custom graph-based pathfinder for local Arizona nodes.
-- **Hybrid Strategy**: Operates in OSRM Proxy mode for real-world geometry but fails back to local high-fidelity interpolation (100 pts) if OSRM is slow (2s timeout).
-- **Smart Caching**: Hardcoded high-resolution geometry for key routes (e.g., I-10 PHX-TUC) to guarantee performance.
+- **Persistence First**: Every route request is first checked against the **PostgreSQL** cache.
+- **Real Road Geometry**: Instead of interpolations, we fetch actual road coordinates from OSRM and store them as `jsonb` blobs.
+- **Automatic Pre-calculation**: On startup, a background worker populates the database with 600+ Arizona city-to-city route pairs, ensuring instant load times and offline readiness.
 
 ### 3. Telemetry Service (Go)
 - **Real-Time Pipeline**: Ingests vehicle pings (Lat, Lon, Speed, Heading).
-- **Redis Backend**: Uses Redis for `vehicle:ID` latest state and `history:ID` capped lists (last 100 pings).
-- **Concurrency**: Leverages Go routines for non-blocking persistence.
+- **Redis Backend**: Uses Redis for `vehicle:ID` latest state and historical tracking.
+- **Concurrency**: Leverages Go routines for non-blocking telemetry ingestion.
 
 ### 4. Simulator (Python)
 - **Movement Physics**: Simulates vehicle acceleration, average speed, and random service breaks.

@@ -72,25 +72,38 @@ export class SimulationEngine {
     /**
      * Start simulation
      */
-    start(config: SimulationConfig): void {
+    start(config: SimulationConfig, initialState?: Partial<SimulationState>): void {
         this.config = config;
-        this.coveredDistance = 0;
         this.totalDistance = this.calculateTotalDistance(config.route);
         this.lastTimestamp = performance.now();
         this.isOnBreak = false;
 
-        this.state = {
-            isRunning: true,
-            isPaused: false,
-            currentPosition: config.route[0],
-            progress: 0,
-            currentSpeed: 0,
-            eta: (this.totalDistance / config.vehicle.avgSpeed) * 60,
-            distanceRemaining: this.totalDistance,
-            elapsedTime: 0,
-            breaks: 0,
-            breakPoints: []
-        };
+        // Support resuming from a saved state
+        if (initialState) {
+            this.state = {
+                ...defaultSimulationState,
+                ...initialState,
+                isRunning: true,
+                isPaused: false
+            };
+            // Calculate covered distance from progress
+            this.coveredDistance = (this.state.progress / 100) * this.totalDistance;
+        } else {
+            this.coveredDistance = 0;
+            this.state = {
+                isRunning: true,
+                isPaused: false,
+                currentPosition: config.route[0],
+                progress: 0,
+                currentSpeed: 0,
+                eta: (this.totalDistance / config.vehicle.avgSpeed) * 60,
+                distanceRemaining: this.totalDistance,
+                elapsedTime: 0,
+                breaks: 0,
+                breakPoints: [],
+                speedMultiplier: config.speedMultiplier || 1
+            };
+        }
 
         this.config.onUpdate(this.state);
         this.animate();

@@ -12,16 +12,23 @@ interface RouteNode {
 }
 
 interface AlternativeRoute {
+    label?: string;
     geometry: [number, number][];
     distance: number;  // km
     duration: number;  // minutes
 }
 
+export type RoadGeometry =
+    | [number, number][]
+    | { type: 'Feature', geometry: { type: 'LineString', coordinates: [number, number][] }, properties: any }
+    | { type: 'FeatureCollection', features: any[] };
+
 interface RouteState {
     startId: string;
     endId: string;
     routeNodes: RouteNode[];
-    roadGeometry: [number, number][] | null;
+    roadGeometry: RoadGeometry | null;
+    optimalGeometry: RoadGeometry | null;
     alternativeRoutes: AlternativeRoute[];
     selectedRouteIndex: number;
     isNavigating: boolean;
@@ -33,7 +40,8 @@ interface RouteContextType extends RouteState {
     setStartId: (id: string) => void;
     setEndId: (id: string) => void;
     setRouteNodes: (nodes: RouteNode[]) => void;
-    setRoadGeometry: (geometry: [number, number][] | null) => void;
+    setRoadGeometry: (geometry: RoadGeometry | null) => void;
+    setOptimalGeometry: (geometry: RoadGeometry | null) => void;
     setAlternativeRoutes: (routes: AlternativeRoute[]) => void;
     selectRoute: (index: number) => void;
     setIsNavigating: (nav: boolean) => void;
@@ -57,6 +65,7 @@ const defaultState: RouteState = {
     endId: '',
     routeNodes: [],
     roadGeometry: null,
+    optimalGeometry: null,
     alternativeRoutes: [],
     selectedRouteIndex: 0,
     isNavigating: false,
@@ -66,43 +75,41 @@ const defaultState: RouteState = {
 
 const RouteContext = createContext<RouteContextType | undefined>(undefined);
 
+const saveState = (state: RouteState) => {
+    try {
+        const toSave = {
+            startId: state.startId,
+            endId: state.endId,
+            vehicle: state.vehicle,
+            isNavigating: state.isNavigating,
+            roadGeometry: state.roadGeometry,
+            optimalGeometry: state.optimalGeometry,
+            alternativeRoutes: state.alternativeRoutes,
+            selectedRouteIndex: state.selectedRouteIndex,
+            simulation: state.simulation.isRunning ? state.simulation : defaultSimulationState
+        };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+    } catch (e) {
+        console.error('Failed to save route state:', e);
+    }
+};
+
 const loadState = (): RouteState => {
     try {
         const saved = localStorage.getItem(STORAGE_KEY);
         if (saved) {
             const parsed = JSON.parse(saved);
-            // Restore navigation state but fetch fresh route geometry
             return {
                 ...defaultState,
-                startId: parsed.startId || '',
-                endId: parsed.endId || '',
-                vehicle: parsed.vehicle || defaultVehicle,
-                isNavigating: parsed.isNavigating || false,  // Persist navigation state
-                // These should be fetched fresh:
-                roadGeometry: null,
-                alternativeRoutes: [],
-                simulation: defaultSimulationState
+                ...parsed,
+                // Ensure defaultSimulationState structure if missing
+                simulation: parsed.simulation || defaultSimulationState
             };
         }
     } catch (e) {
         console.error('Failed to load route state:', e);
     }
     return defaultState;
-};
-
-const saveState = (state: RouteState) => {
-    try {
-        // Save essential state including navigation status
-        const toSave = {
-            startId: state.startId,
-            endId: state.endId,
-            vehicle: state.vehicle,
-            isNavigating: state.isNavigating
-        };
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
-    } catch (e) {
-        console.error('Failed to save route state:', e);
-    }
 };
 
 export const RouteProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
@@ -116,32 +123,56 @@ export const RouteProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     // Update simulation route when geometry changes (e.g. from interpolated to OSRM)
     useEffect(() => {
-        if (simulationRef.current && state.roadGeometry && state.roadGeometry.length > 0) {
-            // Hot-update the route if simulation is running
-            simulationRef.current.updateRoute(state.roadGeometry);
+        if (simulationRef.current && state.roadGeometry) {
+            let coords: [number, number][] = [];
+            const geom = state.roadGeometry;
+            if (Array.isArray(geom)) {
+                coords = geom;
+            } else if (geom.type === 'FeatureCollection') {
+                coords = geom.features.flatMap((f: any) => f.geometry.coordinates);
+            } else if (geom.type === 'Feature') {
+                coords = geom.geometry.coordinates;
+            }
+
+            if (coords.length > 0) {
+                simulationRef.current.updateRoute(coords);
+            }
         }
     }, [state.roadGeometry]);
 
-    // Initialize simulation engine
+    // Initialize simulation engine and auto-resume if needed
     useEffect(() => {
         simulationRef.current = new SimulationEngine();
+
+        // Auto-resume if it was running
+        if (state.simulation.isRunning && state.roadGeometry) {
+            console.log('Auto-resuming simulation from saved state');
+            startSimulation(state.simulation);
+        }
+
         return () => {
             simulationRef.current?.stop();
         };
-    }, []);
+    }, []); // Run once on mount
 
     const setStartId = (id: string) => setState(prev => ({ ...prev, startId: id }));
     const setEndId = (id: string) => setState(prev => ({ ...prev, endId: id }));
     const setRouteNodes = (nodes: RouteNode[]) => setState(prev => ({ ...prev, routeNodes: nodes }));
-    const setRoadGeometry = (geometry: [number, number][] | null) =>
+    const setRoadGeometry = (geometry: RoadGeometry | null) =>
         setState(prev => ({ ...prev, roadGeometry: geometry }));
+    const setOptimalGeometry = (geometry: RoadGeometry | null) =>
+        setState(prev => ({ ...prev, optimalGeometry: geometry, roadGeometry: prev.selectedRouteIndex === 0 ? geometry : prev.roadGeometry }));
     const setAlternativeRoutes = (routes: AlternativeRoute[]) =>
         setState(prev => ({ ...prev, alternativeRoutes: routes }));
 
     const selectRoute = (index: number) => {
         setState(prev => {
             if (index === 0) {
-                return { ...prev, selectedRouteIndex: 0 };
+                return {
+                    ...prev,
+                    selectedRouteIndex: 0,
+                    roadGeometry: prev.optimalGeometry
+                };
             }
             const alt = prev.alternativeRoutes[index - 1];
             if (alt) {
@@ -159,14 +190,27 @@ export const RouteProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     const setVehicle = (vehicle: Vehicle) => setState(prev => ({ ...prev, vehicle }));
 
-    const startSimulation = () => {
-        const route = state.roadGeometry;
-        if (!route || route.length < 2) return;
+    const startSimulation = (initialState?: Partial<SimulationState>) => {
+        let route: [number, number][] = [];
+        const geom = state.roadGeometry;
+
+        if (Array.isArray(geom)) {
+            route = geom;
+        } else if (geom && geom.type === 'FeatureCollection') {
+            route = geom.features.flatMap((f: any) => f.geometry.coordinates);
+        } else if (geom && geom.type === 'Feature') {
+            route = geom.geometry.coordinates;
+        }
+
+        if (!route || !Array.isArray(route) || route.length < 2) {
+            console.error('Invalid route for simulation:', route);
+            return;
+        }
 
         simulationRef.current?.start({
             route,
             vehicle: state.vehicle,
-            speedMultiplier: 50, // Speed up for demo (50x)
+            speedMultiplier: initialState?.speedMultiplier || 50, // Default to 50x
             onUpdate: (simState) => {
                 setState(prev => ({ ...prev, simulation: simState }));
             },
@@ -179,7 +223,7 @@ export const RouteProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             onBreak: (duration) => {
                 console.log(`Vehicle taking a ${duration} minute break`);
             }
-        });
+        }, initialState);
     };
 
     const pauseSimulation = () => simulationRef.current?.pause();
@@ -213,6 +257,7 @@ export const RouteProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             setEndId,
             setRouteNodes,
             setRoadGeometry,
+            setOptimalGeometry,
             setAlternativeRoutes,
             selectRoute,
             setIsNavigating,

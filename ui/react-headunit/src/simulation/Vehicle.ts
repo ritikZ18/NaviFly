@@ -33,6 +33,7 @@ export interface SimulationState {
     elapsedTime: number;     // minutes
     breaks: number;          // count of breaks taken
     breakPoints: BreakPoint[];  // locations where breaks occurred
+    speedMultiplier: number; // current speed multiplier
 }
 
 export const defaultSimulationState: SimulationState = {
@@ -45,5 +46,6 @@ export const defaultSimulationState: SimulationState = {
     distanceRemaining: 0,
     elapsedTime: 0,
     breaks: 0,
-    breakPoints: []
+    breakPoints: [],
+    speedMultiplier: 1
 };

@@ -3,272 +3,428 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io"
+	"io/ioutil"
 	"log"
+	"math"
 	"net/http"
 	"os"
 	"time"
-	"navifly/routing/internal/routing"
-	"github.com/gorilla/mux"
+
 	"github.com/gorilla/handlers"
+	"github.com/gorilla/mux"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
-var cityGraph *routing.Graph
+var (
+	db *gorm.DB
+)
 
-func init() {
-	// Full Arizona Route Graph
-	cityGraph = routing.NewGraph()
-	
-	// Phoenix Metro Area
-	cityGraph.AddNode(&routing.Node{ID: "phx", Lat: 33.4484, Lon: -112.0740, Name: "Phoenix Downtown"})
-	cityGraph.AddNode(&routing.Node{ID: "phx-airport", Lat: 33.4373, Lon: -112.0078, Name: "Phoenix Sky Harbor"})
-	cityGraph.AddNode(&routing.Node{ID: "tempe", Lat: 33.4255, Lon: -111.9400, Name: "Tempe (ASU)"})
-	cityGraph.AddNode(&routing.Node{ID: "mesa", Lat: 33.4152, Lon: -111.8315, Name: "Mesa"})
-	cityGraph.AddNode(&routing.Node{ID: "scottsdale", Lat: 33.4942, Lon: -111.9261, Name: "Scottsdale"})
-	cityGraph.AddNode(&routing.Node{ID: "glendale", Lat: 33.5387, Lon: -112.1859, Name: "Glendale"})
-	cityGraph.AddNode(&routing.Node{ID: "chandler", Lat: 33.3062, Lon: -111.8413, Name: "Chandler"})
-	
-	// Southern Arizona
-	cityGraph.AddNode(&routing.Node{ID: "tucson", Lat: 32.2226, Lon: -110.9747, Name: "Tucson"})
-	cityGraph.AddNode(&routing.Node{ID: "yuma", Lat: 32.6927, Lon: -114.6277, Name: "Yuma"})
-	cityGraph.AddNode(&routing.Node{ID: "casa-grande", Lat: 32.8795, Lon: -111.7574, Name: "Casa Grande"})
-	
-	// Northern Arizona
-	cityGraph.AddNode(&routing.Node{ID: "flagstaff", Lat: 35.1983, Lon: -111.6513, Name: "Flagstaff"})
-	cityGraph.AddNode(&routing.Node{ID: "sedona", Lat: 34.8697, Lon: -111.7610, Name: "Sedona"})
-	cityGraph.AddNode(&routing.Node{ID: "grand-canyon", Lat: 36.0544, Lon: -112.1401, Name: "Grand Canyon"})
-	cityGraph.AddNode(&routing.Node{ID: "prescott", Lat: 34.5400, Lon: -112.4685, Name: "Prescott"})
-	cityGraph.AddNode(&routing.Node{ID: "page", Lat: 36.9147, Lon: -111.4558, Name: "Page (Lake Powell)"})
-	
-	// Eastern Arizona
-	cityGraph.AddNode(&routing.Node{ID: "show-low", Lat: 34.2542, Lon: -110.0298, Name: "Show Low"})
-	
-	// Phoenix Metro connections (I-10, I-17, US-60, Loop 101/202)
-	cityGraph.AddEdge("phx", "phx-airport", 8.0)
-	cityGraph.AddEdge("phx", "tempe", 12.0)
-	cityGraph.AddEdge("phx", "scottsdale", 15.0)
-	cityGraph.AddEdge("phx", "glendale", 14.0)
-	cityGraph.AddEdge("phx-airport", "tempe", 6.0)
-	cityGraph.AddEdge("tempe", "mesa", 10.0)
-	cityGraph.AddEdge("tempe", "chandler", 12.0)
-	cityGraph.AddEdge("mesa", "chandler", 8.0)
-	cityGraph.AddEdge("scottsdale", "tempe", 10.0)
-	
-	// I-10 West (Phoenix to Yuma)
-	cityGraph.AddEdge("phx", "glendale", 14.0)
-	cityGraph.AddEdge("glendale", "yuma", 180.0)
-	
-	// I-10 East/South (Phoenix to Tucson)
-	cityGraph.AddEdge("phx", "casa-grande", 70.0)
-	cityGraph.AddEdge("chandler", "casa-grande", 45.0)
-	cityGraph.AddEdge("casa-grande", "tucson", 65.0)
-	
-	// I-17 North (Phoenix to Flagstaff)
-	cityGraph.AddEdge("phx", "prescott", 100.0)
-	cityGraph.AddEdge("prescott", "sedona", 60.0)
-	cityGraph.AddEdge("sedona", "flagstaff", 45.0)
-	
-	// US-89 North (Flagstaff to Grand Canyon/Page)
-	cityGraph.AddEdge("flagstaff", "grand-canyon", 80.0)
-	cityGraph.AddEdge("flagstaff", "page", 135.0)
-	cityGraph.AddEdge("grand-canyon", "page", 140.0)
-	
-	// US-60 East (Phoenix to Show Low)
-	cityGraph.AddEdge("mesa", "show-low", 175.0)
-	cityGraph.AddEdge("show-low", "flagstaff", 125.0)
+// ── Database Models ──
+
+type RouteCache struct {
+	ID        uint      `gorm:"primaryKey"`
+	StartID   string    `gorm:"index:idx_route_pair"`
+	EndID     string    `gorm:"index:idx_route_pair"`
+	Data      []byte    `gorm:"type:jsonb"`
+	CreatedAt time.Time
 }
 
-type RouteRequest struct {
-	StartID string `json:"start_id"`
-	EndID   string `json:"end_id"`
+// ── Shared Types ──
+
+type Feature struct {
+	Type       string                 `json:"type"`
+	Properties map[string]interface{} `json:"properties"`
+	Geometry   interface{}            `json:"geometry"`
 }
 
-type RouteResponse struct {
-	Path         []string              `json:"path"`
-	Distance     float64               `json:"distance"`
-	Nodes        []*routing.Node       `json:"nodes"`
-	Instructions []routing.Instruction `json:"instructions"`
+type FeatureCollection struct {
+	Type     string    `json:"type"`
+	Features []Feature `json:"features"`
 }
 
-func GetRoute(w http.ResponseWriter, r *http.Request) {
-	var req RouteRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+type EnhancedRoute struct {
+	Geometry   FeatureCollection `json:"geometry"`
+	Distance   float64           `json:"distance"`
+	Duration   float64           `json:"duration"`
+	Label      string            `json:"label"`
+	FullCoords [][2]float64      `json:"full_coords"`
+}
+
+type EnhancedResponse struct {
+	Routes []EnhancedRoute `json:"routes"`
+}
+
+type Location struct {
+	ID   string  `json:"id"`
+	Name string  `json:"name"`
+	Lat  float64 `json:"lat"`
+	Lon  float64 `json:"lon"`
+}
+
+var locations = []Location{
+	{"phx", "Phoenix Downtown", 33.4484, -112.0740},
+	{"scottsdale", "Scottsdale Old Town", 33.4942, -111.9261},
+	{"tempe", "Tempe (ASU)", 33.4255, -111.9400},
+	{"mesa", "Mesa Arts Center", 33.4152, -111.8315},
+	{"chandler", "Chandler Fashion", 33.3032, -111.9224},
+	{"gilbert", "Gilbert Heritage", 33.3528, -111.7890},
+	{"glendale", "Glendale Stadium", 33.5387, -112.1860},
+	{"peoria", "Peoria Sports", 33.5806, -112.2374},
+	{"tucson", "Tucson", 32.2226, -110.9747},
+	{"flagstaff", "Flagstaff", 35.1983, -111.6513},
+	{"sedona", "Sedona", 34.8697, -111.7610},
+	{"grand-canyon", "Grand Canyon Village", 36.0544, -112.1401},
+	{"yuma", "Yuma", 32.6927, -114.6277},
+	{"kingman", "Kingman", 35.1894, -114.0530},
+	{"show-low", "Show Low", 34.2542, -110.0298},
+	{"payson", "Payson", 34.2309, -111.3251},
+	{"surprise", "Surprise", 33.6292, -112.3679},
+	{"goodyear", "Goodyear", 33.4353, -112.3583},
+	{"buckeye", "Buckeye", 33.3703, -112.5838},
+	{"maricopa", "Maricopa", 33.0581, -112.0476},
+	{"casa-grande", "Casa Grande", 32.8795, -111.7573},
+	{"sierra-vista", "Sierra Vista", 31.5545, -110.3037},
+	{"prescott", "Prescott", 34.5400, -112.4685},
+	{"lake-havasu", "Lake Havasu City", 34.5066, -114.2690},
+	{"nogales", "Nogales", 31.3404, -110.9348},
+}
+
+func main() {
+	// Initialize Database
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		dsn = "host=localhost user=admin password=navifly dbname=navifly port=5432 sslmode=disable"
 	}
 
-	path, dist := routing.AStar(cityGraph, req.StartID, req.EndID)
-	
-	resp := RouteResponse{
-		Path:         path,
-		Distance:     dist,
-		Instructions: routing.GenerateInstructions(path, cityGraph),
+	var err error
+	for i := 0; i < 10; i++ {
+		db, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
+		if err == nil {
+			break
+		}
+		log.Printf("Waiting for database... (%d/10)", i+1)
+		time.Sleep(2 * time.Second)
+	}
+	if err != nil {
+		log.Fatal("Failed to connect to database:", err)
 	}
 
-	for _, id := range path {
-		resp.Nodes = append(resp.Nodes, cityGraph.Nodes[id])
-	}
+	// Migrate schema
+	db.AutoMigrate(&RouteCache{})
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	// Pre-populate cache with REAL OSRM road geometry
+	go preCalculateRealRoutes()
+
+	log.Println("Routing service starting on :8080...")
+
+	r := mux.NewRouter()
+	r.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	}).Methods("GET")
+
+	r.HandleFunc("/locations", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(locations)
+	}).Methods("GET")
+
+	r.HandleFunc("/osrm-route", HandleRoute).Methods("GET")
+	r.HandleFunc("/route", HandleRoute).Methods("GET")
+
+	corsObj := handlers.CORS(
+		handlers.AllowedOrigins([]string{"*"}),
+		handlers.AllowedMethods([]string{"GET", "POST", "OPTIONS"}),
+		handlers.AllowedHeaders([]string{"Content-Type", "Authorization"}),
+	)
+
+	log.Fatal(http.ListenAndServe(":8080", corsObj(r)))
 }
 
-// GetRouteQuery handles GET requests with query parameters for the Map component
-func GetRouteQuery(w http.ResponseWriter, r *http.Request) {
+func HandleRoute(w http.ResponseWriter, r *http.Request) {
 	startID := r.URL.Query().Get("start")
 	endID := r.URL.Query().Get("end")
-	
+
 	if startID == "" || endID == "" {
 		http.Error(w, "Missing start or end parameter", http.StatusBadRequest)
 		return
 	}
 
-	path, dist := routing.AStar(cityGraph, startID, endID)
-	if len(path) == 0 {
-		http.Error(w, "No route found", http.StatusNotFound)
-		return
-	}
-	
-	// Build response with road_geometry for the Map component
-	type GeoResponse struct {
-		Path         []string        `json:"path"`
-		Distance     float64         `json:"distance"`
-		RoadGeometry [][2]float64    `json:"road_geometry"`
-		Nodes        []*routing.Node `json:"nodes"`
-	}
-	
-	resp := GeoResponse{
-		Path:         path,
-		Distance:     dist,
-		RoadGeometry: make([][2]float64, 0),
-		Nodes:        make([]*routing.Node, 0, len(path)),
-	}
-
-	// Check for cached high-fidelity routes (hardcoded for demo/offline fallback)
-	if startID == "phx" && endID == "tucson" {
-		// I-10 roughly traced coordinates (Phoenix -> Tucson)
-		// This provides a much better "Tesla-like" experience for the main demo route
-		cachedGeometry := [][2]float64{
-			{33.4484, -112.0740}, {33.4255, -112.0000}, {33.3500, -111.9700}, 
-			{33.3000, -111.9600}, {33.2500, -111.9500}, {33.2000, -111.9400},
-			{33.1500, -111.9300}, {33.0800, -111.9200}, {33.0000, -111.9000}, // Chandler area
-			{32.9500, -111.8500}, {32.9000, -111.8000}, {32.8795, -111.7574}, // Casa Grande
-			{32.8500, -111.7000}, {32.8000, -111.6500}, {32.7500, -111.6000},
-			{32.7000, -111.5500}, {32.6500, -111.5000}, {32.6000, -111.4500}, // Picacho Peak
-			{32.5500, -111.4000}, {32.5000, -111.3500}, {32.4500, -111.3000},
-			{32.4000, -111.2500}, {32.3500, -111.2000}, {32.3000, -111.1500}, // Marana
-			{32.2800, -111.1000}, {32.2500, -111.0500}, {32.2226, -110.9747}, // Tucson
-		}
-		
-		// Interpolate between these high-level points for smoothness
-		resp.RoadGeometry = make([][2]float64, 0)
-		for i := 1; i < len(cachedGeometry); i++ {
-			p1 := cachedGeometry[i-1]
-			p2 := cachedGeometry[i]
-			// 20 sub-points between each high-level point
-			for j := 0; j <= 20; j++ {
-				t := float64(j) / 20.0
-				lat := p1[0] + t*(p2[0]-p1[0])
-				lon := p1[1] + t*(p2[1]-p1[1])
-				resp.RoadGeometry = append(resp.RoadGeometry, [2]float64{lat, lon})
-			}
-		}
-		
+	// 1. Check DB Cache
+	var cached RouteCache
+	if err := db.Where("start_id = ? AND end_id = ?", startID, endID).First(&cached).Error; err == nil {
+		log.Printf("✅ DB hit: %s → %s", startID, endID)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		w.Write(cached.Data)
 		return
 	}
 
-	// Default: Build Interpolated road geometry (smooth path between waypoints)
-	for i, id := range path {
-		node := cityGraph.Nodes[id]
-		resp.Nodes = append(resp.Nodes, node)
-		
-		if i == 0 {
-			resp.RoadGeometry = append(resp.RoadGeometry, [2]float64{node.Lat, node.Lon})
-		} else {
-			prevNode := cityGraph.Nodes[path[i-1]]
-			// Interpolate 100 points between waypoints for smoother path (Generic)
-			for j := 1; j <= 100; j++ {
-				t := float64(j) / 100.0
-				lat := prevNode.Lat + t*(node.Lat-prevNode.Lat)
-				lon := prevNode.Lon + t*(node.Lon-prevNode.Lon)
-				resp.RoadGeometry = append(resp.RoadGeometry, [2]float64{lat, lon})
-			}
-		}
+	// 2. Fetch from OSRM on cache miss
+	log.Printf("DB miss. Fetching real route from OSRM: %s → %s", startID, endID)
+	resp, err := fetchAndCacheRoute(startID, endID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
 }
 
-// GetLocations returns all available locations for the UI dropdowns
-func GetLocations(w http.ResponseWriter, r *http.Request) {
-	locations := make([]*routing.Node, 0, len(cityGraph.Nodes))
-	for _, node := range cityGraph.Nodes {
-		locations = append(locations, node)
-	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(locations)
+// ── OSRM Integration ──
+
+type OSRMResponse struct {
+	Routes []struct {
+		Geometry struct {
+			Coordinates [][]float64 `json:"coordinates"`
+		} `json:"geometry"`
+		Distance float64 `json:"distance"`
+		Duration float64 `json:"duration"`
+	} `json:"routes"`
+	Code string `json:"code"`
 }
 
-// ProxyOSRM proxies requests to OSRM for real road geometry
-func ProxyOSRM(w http.ResponseWriter, r *http.Request) {
-	startID := r.URL.Query().Get("start")
-	endID := r.URL.Query().Get("end")
-	
-	startNode := cityGraph.Nodes[startID]
-	endNode := cityGraph.Nodes[endID]
-	
-	if startNode == nil || endNode == nil {
-		http.Error(w, "Invalid start or end location", http.StatusBadRequest)
-		return
+func fetchOSRMRoute(startLon, startLat, endLon, endLat float64, alternatives bool) (*OSRMResponse, error) {
+	altParam := "false"
+	if alternatives {
+		altParam = "true"
 	}
-	
-	// Build OSRM URL with actual coordinates
-	osrmURL := fmt.Sprintf(
-		"https://router.project-osrm.org/route/v1/driving/%f,%f;%f,%f?alternatives=3&overview=full&geometries=geojson",
-		startNode.Lon, startNode.Lat, endNode.Lon, endNode.Lat,
+	url := fmt.Sprintf(
+		"http://router.project-osrm.org/route/v1/driving/%f,%f;%f,%f?overview=full&geometries=geojson&alternatives=%s",
+		startLon, startLat, endLon, endLat, altParam,
 	)
-	
-	client := &http.Client{Timeout: 2 * time.Second}
-	resp, err := client.Get(osrmURL)
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Get(url)
 	if err != nil {
-		http.Error(w, "OSRM request failed: "+err.Error(), http.StatusBadGateway)
-		return
+		return nil, fmt.Errorf("OSRM request failed: %v", err)
 	}
 	defer resp.Body.Close()
-	
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(resp.StatusCode)
-	io.Copy(w, resp.Body)
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read OSRM response: %v", err)
+	}
+
+	var osrmResp OSRMResponse
+	if err := json.Unmarshal(body, &osrmResp); err != nil {
+		return nil, fmt.Errorf("failed to parse OSRM response: %v", err)
+	}
+
+	if osrmResp.Code != "Ok" || len(osrmResp.Routes) == 0 {
+		return nil, fmt.Errorf("OSRM returned no routes (code: %s)", osrmResp.Code)
+	}
+
+	return &osrmResp, nil
 }
 
-func main() {
-	r := mux.NewRouter()
-	r.HandleFunc("/route", GetRoute).Methods("POST")
-	r.HandleFunc("/route", GetRouteQuery).Methods("GET")
-	r.HandleFunc("/osrm-route", ProxyOSRM).Methods("GET")
-	r.HandleFunc("/locations", GetLocations).Methods("GET")
-	r.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprint(w, "OK")
-	}).Methods("GET")
+func fetchAndCacheRoute(startID, endID string) (*EnhancedResponse, error) {
+	var startLoc, endLoc Location
+	for _, loc := range locations {
+		if loc.ID == startID {
+			startLoc = loc
+		}
+		if loc.ID == endID {
+			endLoc = loc
+		}
+	}
 
-	// Add Root Handler so localhost:8080 doesn't 404
-	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprint(w, "NaviFly Routing Service Online 🚀")
-	}).Methods("GET")
-	
-	log.Println("Routing service starting on :8080...")
+	if startLoc.ID == "" || endLoc.ID == "" {
+		return nil, fmt.Errorf("unknown location ID")
+	}
 
-	// CORS Headers
-	headersOk := handlers.AllowedHeaders([]string{"X-Requested-With", "Content-Type", "Authorization"})
-	originsOk := handlers.AllowedOrigins([]string{"*"})
-	methodsOk := handlers.AllowedMethods([]string{"GET", "HEAD", "POST", "PUT", "OPTIONS"})
+	osrmResp, err := fetchOSRMRoute(startLoc.Lon, startLoc.Lat, endLoc.Lon, endLoc.Lat, true)
+	if err != nil {
+		return nil, err
+	}
 
-	// Wrap with Logging and CORS
-	loggedRouter := handlers.LoggingHandler(os.Stdout, r)
-	log.Fatal(http.ListenAndServe(":8080", handlers.CORS(originsOk, headersOk, methodsOk)(loggedRouter)))
+	enhancedResp := EnhancedResponse{Routes: []EnhancedRoute{}}
+
+	labels := []string{"Fastest", "Scenic Route", "Alternative"}
+	speeds := []float64{90.0, 85.0, 80.0}
+
+	for i, osrmRoute := range osrmResp.Routes {
+		coords := make([][2]float64, len(osrmRoute.Geometry.Coordinates))
+		for j, c := range osrmRoute.Geometry.Coordinates {
+			coords[j] = [2]float64{c[0], c[1]} // [lon, lat]
+		}
+
+		fc := buildTrafficFeatureCollection(coords, i)
+
+		label := "Alternative"
+		if i < len(labels) {
+			label = labels[i]
+		}
+		speed := speeds[0]
+		if i < len(speeds) {
+			speed = speeds[i]
+		}
+
+		enhancedResp.Routes = append(enhancedResp.Routes, EnhancedRoute{
+			Geometry:   fc,
+			Distance:   osrmRoute.Distance,
+			Duration:   (osrmRoute.Distance / 1000.0 / speed) * 3600,
+			Label:      label,
+			FullCoords: coords,
+		})
+	}
+
+	// Cache in DB
+	data, _ := json.Marshal(enhancedResp)
+	db.Create(&RouteCache{
+		StartID: startID,
+		EndID:   endID,
+		Data:    data,
+	})
+	log.Printf("💾 Cached real OSRM route: %s → %s (%d coords)", startID, endID, len(osrmResp.Routes[0].Geometry.Coordinates))
+
+	return &enhancedResp, nil
+}
+
+// ── Pre-calculation ──
+
+func preCalculateRealRoutes() {
+	log.Println("🚀 Starting pre-calculation with REAL OSRM road geometry...")
+
+	// Clear old fake routes
+	db.Where("1 = 1").Delete(&RouteCache{})
+	log.Println("🗑️ Cleared old fake route cache")
+
+	count := 0
+	failed := 0
+
+	for i, l1 := range locations {
+		for j, l2 := range locations {
+			if l1.ID == l2.ID {
+				continue
+			}
+
+			// Rate limit: OSRM demo server allows ~1 req/sec
+			time.Sleep(1100 * time.Millisecond)
+
+			_, err := fetchAndCacheRoute(l1.ID, l2.ID)
+			if err != nil {
+				log.Printf("⚠️ Failed %s → %s: %v", l1.ID, l2.ID, err)
+				failed++
+				continue
+			}
+			count++
+			log.Printf("📍 [%d/%d] Cached: %s → %s", count, len(locations)*(len(locations)-1), l1.ID, l2.ID)
+
+			// Log progress every batch
+			if count%25 == 0 {
+				total := len(locations) * (len(locations) - 1)
+				pct := float64(count+failed) / float64(total) * 100
+				log.Printf("📊 Progress: %.1f%% (%d cached, %d failed)", pct, count, failed)
+			}
+
+			_ = i
+			_ = j
+		}
+	}
+
+	log.Printf("✅ Pre-calculation complete! %d routes cached, %d failed.", count, failed)
+}
+
+// ── Traffic Segmentation ──
+
+func buildTrafficFeatureCollection(coords [][2]float64, routeIndex int) FeatureCollection {
+	fc := FeatureCollection{Type: "FeatureCollection", Features: make([]Feature, 0)}
+
+	if len(coords) < 2 {
+		return fc
+	}
+
+	// Calculate total distance for realistic segment sizing
+	totalDist := 0.0
+	for i := 0; i < len(coords)-1; i++ {
+		totalDist += haversine(coords[i][1], coords[i][0], coords[i+1][1], coords[i+1][0])
+	}
+
+	// Target ~2-5 km per traffic segment for realistic look
+	targetSegmentDist := 3.0 // km
+	if totalDist < 20 {
+		targetSegmentDist = 1.0
+	} else if totalDist > 200 {
+		targetSegmentDist = 8.0
+	}
+
+	// Congestion patterns (weighted toward low for highway driving)
+	congestionWeights := []struct {
+		level  string
+		weight float64
+	}{
+		{"low", 0.55},
+		{"moderate", 0.20},
+		{"low", 0.10},
+		{"high", 0.08},
+		{"low", 0.07},
+	}
+
+	segStart := 0
+	segDist := 0.0
+	segIdx := 0
+
+	for i := 0; i < len(coords)-1; i++ {
+		d := haversine(coords[i][1], coords[i][0], coords[i+1][1], coords[i+1][0])
+		segDist += d
+
+		if segDist >= targetSegmentDist || i == len(coords)-2 {
+			segEnd := i + 2
+			if segEnd > len(coords) {
+				segEnd = len(coords)
+			}
+
+			segCoords := coords[segStart:segEnd]
+
+			// Determine congestion based on position + route index for variety
+			hash := (segIdx + routeIndex*7) % len(congestionWeights)
+			congestion := congestionWeights[hash].level
+
+			// Urban areas (near city centers) get more congestion
+			midIdx := (segStart + segEnd) / 2
+			if midIdx < len(coords) {
+				midCoord := coords[midIdx]
+				for _, loc := range locations {
+					distToCity := haversine(midCoord[1], midCoord[0], loc.Lat, loc.Lon)
+					if distToCity < 5.0 { // Within 5km of a city
+						if segIdx%3 == 0 {
+							congestion = "high"
+						} else {
+							congestion = "moderate"
+						}
+						break
+					}
+				}
+			}
+
+			fc.Features = append(fc.Features, Feature{
+				Type: "Feature",
+				Properties: map[string]interface{}{
+					"congestion": congestion,
+				},
+				Geometry: map[string]interface{}{
+					"type":        "LineString",
+					"coordinates": segCoords,
+				},
+			})
+
+			segStart = i + 1
+			segDist = 0
+			segIdx++
+		}
+	}
+
+	return fc
+}
+
+func haversine(lat1, lon1, lat2, lon2 float64) float64 {
+	const R = 6371.0 // Earth radius in km
+	dLat := (lat2 - lat1) * math.Pi / 180
+	dLon := (lon2 - lon1) * math.Pi / 180
+	a := math.Sin(dLat/2)*math.Sin(dLat/2) +
+		math.Cos(lat1*math.Pi/180)*math.Cos(lat2*math.Pi/180)*
+			math.Sin(dLon/2)*math.Sin(dLon/2)
+	c := 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
+	return R * c
 }

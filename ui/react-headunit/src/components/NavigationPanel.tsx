@@ -6,6 +6,7 @@ import type { Settings } from './SettingsModal';
 import { useRoute } from '../context/RouteContext';
 import { VehicleFactory } from '../simulation';
 import type { VehicleType } from '../simulation';
+import RouteOptions from './RouteOptions';
 
 interface Location {
     id: string;
@@ -29,6 +30,13 @@ const NavigationPanel: React.FC = () => {
         startSimulation, pauseSimulation, resumeSimulation, stopSimulation,
         setSpeedMultiplier: setSimSpeed, clearNavigation, setIsStartingNavigation
     } = useRoute();
+
+    // Sync local speed multiplier with context simulation state (for resumption)
+    useEffect(() => {
+        if (simulation.speedMultiplier && simulation.speedMultiplier !== speedMultiplier) {
+            setSpeedMultiplier(simulation.speedMultiplier);
+        }
+    }, [simulation.speedMultiplier]);
 
     // Fetch locations ONCE
     useEffect(() => {
@@ -66,20 +74,28 @@ const NavigationPanel: React.FC = () => {
     const handleStartNavigation = () => {
         if (!startId || !endId || startId === endId) return;
 
-        // Trigger cinematic loader
-        setIsStartingNavigation(true);
+        // Transition immediately to navigation mode
+        setIsStartingNavigation(false);
+        setIsNavigating(true);
 
-        // Wait for loader animation (2s)
-        setTimeout(() => {
-            setIsStartingNavigation(false);
-            setIsNavigating(true);
-            // Auto-start simulation when navigation begins
-            startSimulation();
-        }, 2000);
+        // startSimulation will wait for geometry to be present via useEffect in context
+        startSimulation();
     };
 
     const handleStartSimulation = () => {
-        if (!roadGeometry || roadGeometry.length < 2) return;
+        const route = roadGeometry;
+        if (!route) return;
+
+        let hasCoords = false;
+        if (Array.isArray(route)) {
+            hasCoords = route.length >= 2;
+        } else if (route.type === 'FeatureCollection') {
+            hasCoords = route.features.length > 0;
+        } else if (route.type === 'Feature') {
+            hasCoords = true; // LineString feature
+        }
+
+        if (!hasCoords) return;
         setSimSpeed(speedMultiplier);
         startSimulation();
     };
@@ -150,6 +166,9 @@ const NavigationPanel: React.FC = () => {
                 )}
             </div>
 
+            {/* Route Selection Cards (Stage 1) */}
+            {isNavigating && <RouteOptions />}
+
             {/* Vehicle Selector */}
             <div className="vehicle-selector">
                 <label className="selector-label">Vehicle</label>
@@ -188,6 +207,20 @@ const NavigationPanel: React.FC = () => {
                             <span className="stat-label">Breaks</span>
                         </div>
                     </div>
+
+                    {simulation.breakPoints.length > 0 && (
+                        <div className="upcoming-stops">
+                            <label className="selector-label" style={{ marginTop: '1rem', display: 'block' }}>Upcoming Stops</label>
+                            <div className="stops-list">
+                                {simulation.breakPoints.slice(-3).map((bp, i) => (
+                                    <div key={i} className="stop-item">
+                                        <span className="stop-icon">🛑</span>
+                                        <span className="stop-desc">{bp.duration}m break scheduled</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
 
@@ -230,7 +263,7 @@ const NavigationPanel: React.FC = () => {
                     <button
                         className="btn-primary"
                         onClick={handleStartNavigation}
-                        disabled={!startId || !endId || startId === endId || isLoading}
+                        disabled={!startId || !endId || startId === '' || endId === '' || startId === endId || isLoading}
                     >
                         <Navigation size={18} />
                         START NAVIGATION
