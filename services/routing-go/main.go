@@ -132,6 +132,12 @@ func main() {
 	r.HandleFunc("/osrm-route", HandleRoute).Methods("GET")
 	r.HandleFunc("/route", HandleRoute).Methods("GET")
 
+	// Add Root Handler for health checks
+	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, "NaviFly Routing Service Online 🛣️")
+	}).Methods("GET")
+
 	corsObj := handlers.CORS(
 		handlers.AllowedOrigins([]string{"*"}),
 		handlers.AllowedMethods([]string{"GET", "POST", "OPTIONS"}),
