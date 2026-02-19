@@ -49,8 +49,63 @@ Once complete, the platform is available at:
 - **Data**: Redis (Real-time caching & state).
 - **Automation**: GitHub Actions (CI/CD), Docker Compose.
 
-## IMAGES : 
-<img width="2184" height="1883" alt="Screenshot 2026-02-03 150059" src="https://github.com/user-attachments/assets/00642798-4bb6-45b9-96ac-5ae2fdec729b" />
-<img width="2184" height="1883" alt="Screenshot 2026-02-03 150042" src="https://github.com/user-attachments/assets/3597069e-a88d-4893-b00d-012f27f11b96" />
-<img width="2184" height="1883" alt="Screenshot 2026-02-03 150049" src="https://github.com/user-attachments/assets/f93d706e-34b2-4b94-b3c8-2b9cb5051364" />
+## IMAGES : Previous vs Current
+<!-- Pair 1 -->
+<table>
+  <tr>
+    <th>Previous</th>
+    <th>Later</th>
+  </tr>
+  <tr>
+    <td>
+      <img width="100%" alt="Previous - Screenshot 2026-02-03 150059"
+        src="https://github.com/user-attachments/assets/00642798-4bb6-45b9-96ac-5ae2fdec729b" />
+    </td>
+    <td>
+      <img width="100%" alt="Later - Image 1"
+        src="https://github.com/user-attachments/assets/b37ee83d-c144-44b1-8992-f78f2633b20c" />
+    </td>
+  </tr>
+</table>
+
+<br/>
+
+<!-- Pair 2 -->
+<table>
+  <tr>
+    <th>Previous</th>
+    <th>Later</th>
+  </tr>
+  <tr>
+    <td>
+      <img width="100%" alt="Previous - Screenshot 2026-02-03 150042"
+        src="https://github.com/user-attachments/assets/3597069e-a88d-4893-b00d-012f27f11b96" />
+    </td>
+    <td>
+      <img width="100%" alt="Later - Image 2"
+        src="https://github.com/user-attachments/assets/83fcbd88-0635-485f-bc03-6a60aaab56cd" />
+    </td>
+  </tr>
+</table>
+
+<br/>
+
+<!-- Pair 3 -->
+<table>
+  <tr>
+    <th>Previous</th>
+    <th>Later</th>
+  </tr>
+  <tr>
+    <td>
+      <img width="100%" alt="Previous - Screenshot 2026-02-03 150049"
+        src="https://github.com/user-attachments/assets/f93d706e-34b2-4b94-b3c8-2b9cb5051364" />
+    </td>
+    <td>
+      <img width="100%" alt="Later - Image 3"
+        src="https://github.com/user-attachments/assets/a23a0d35-30d2-45af-a469-a4bd445c3829" />
+    </td>
+  </tr>
+</table>
+
 
