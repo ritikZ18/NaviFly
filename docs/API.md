@@ -8,13 +8,14 @@ NaviFly uses RESTful APIs across all Go microservices. All services support CORS
 Returns a list of all pre-defined nodes in the Arizona road network.
 - **Purpose**: Populate UI dropdowns.
 
-### `GET /route?start={id}&end={id}`
-Calculates an interpolated path between two node IDs.
-- **Output**: JSON with `road_geometry` (Arrays of [lat, lon]).
-
 ### `GET /osrm-route?start={id}&end={id}`
-Proxies a request to the Project OSRM API for real road geometry.
-- **Failover**: Fails within 2s to local routing if OSRM is slow.
+Retrieves real road geometry with traffic segmentation. 
+- **Mechanism**: Checks **PostgreSQL Cache** first.
+- **Failover**: On cache miss, it fetches real geometry from the OSRM demo server and persists it for future use.
+- **Response**: `EnhancedResponse` JSON with traffic-colored segments.
+
+### `GET /route?start={id}&end={id}`
+Legacy alias for `/osrm-route`. Both endpoints now serve the same high-fidelity cached data.
 
 ---
 

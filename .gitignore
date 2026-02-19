@@ -55,3 +55,6 @@ Thumbs.db
 # K8s / Docker
 *.log
 .docker/
+
+# OSRM map data (downloaded at setup, not needed in repo)
+data/

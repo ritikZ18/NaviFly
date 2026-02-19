@@ -1,6 +1,15 @@
-version: '3.8'
-
 services:
+  db:
+    image: postgres:alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=navifly
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=navifly
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
   redis:
     image: redis:alpine
     ports:
@@ -12,9 +21,9 @@ services:
     ports:
       - "8080:8080"
     environment:
-      - REDIS_URL=redis:6379
+      - DATABASE_URL=host=db user=admin password=navifly dbname=navifly port=5432 sslmode=disable
     depends_on:
-      - redis
+      - db
 
   telemetry-service:
     build: 
@@ -54,3 +63,6 @@ services:
       - routing-service
      # For demo purposes, we can restart it or run it once
     restart: on-failure
+
+volumes:
+  postgres_data:
