@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Map from './components/Map'
 import NavigationPanel from './components/NavigationPanel'
+import Preloader from './components/Preloader'
 import { RouteProvider, useRoute } from './context/RouteContext'
 import './index.css'
 
@@ -8,6 +9,7 @@ function HeadUnit() {
   const [currentTime, setCurrentTime] = useState(new Date())
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [isOpsMenuOpen, setIsOpsMenuOpen] = useState(false)
+  const [isMapReady, setIsMapReady] = useState(false)
 
   const {
     isTracking,
@@ -41,8 +43,13 @@ function HeadUnit() {
 
   const isCamOn = visualMode !== 'normal';
 
+  const handleMapLoaded = useCallback(() => {
+    setIsMapReady(true);
+  }, []);
+
   return (
     <div className={`head-unit-container ${isFullscreen ? 'fullscreen' : ''}`}>
+      <Preloader isReady={isMapReady} />
       <NavigationPanel />
       <div
         className={`map-wrapper ${isScope ? 'ops-scope' : ''} ${isGrid ? 'ops-grid' : ''} vis-${visualMode} ${isCamOn ? 'cam-on' : ''}`}
@@ -54,7 +61,7 @@ function HeadUnit() {
           '--cam-vignette': camSettings.vignette
         } as React.CSSProperties}
       >
-        <Map />
+        <Map onLoaded={handleMapLoaded} />
 
         {/* Map HUD Controls */}
         <div className="map-hud">
@@ -129,7 +136,7 @@ function HeadUnit() {
                     <input
                       type="range" min="0" max="1" step="0.05"
                       value={camSettings.vignette}
-                      onChange={(e) => setCamSettings({ vignette: parseFloat(e.target.value) })}
+                      onChange={(e) => setCamSettings({ ...camSettings, vignette: parseFloat(e.target.value) })}
                     />
                   </div>
                 </div>

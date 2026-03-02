@@ -1,4 +1,23 @@
-# React + TypeScript + Vite
+# NaviFly Tactical Head-Unit (v2.0)
+
+![NaviFly Tactical NVG](/home/swamizero/development/last-semester/04-portfolio/projects-showcase/NaviFly/ui/react-headunit/docs/navifly_tactical_nvg_mockup.png)
+
+## Overview
+NaviFly is a premium, automotive-grade tactical dashboard built with React, Vite, and MapLibre GL. It features a high-fidelity "Special Ops" view with realistic camera post-processing and zero-lag vehicle tracking.
+
+### Key Features
+- **Cinematic Preloader**: Immersive "Route Acquisition" sequence.
+
+![NaviFly Preloader](/home/swamizero/development/last-semester/04-portfolio/projects-showcase/NaviFly/ui/react-headunit/docs/navifly_preloader_mockup.png)
+
+- **Realistic Visual Modes**: NVG, Thermal, Mono, and Amber filters.
+- **Perfect Centering**: 90FPS vehicle tracking in scope mode.
+- **Tactical HUD**: Granular control over brightness, contrast, grain, and vignette.
+
+[**View the full Visual Gallery →**](./docs/VISUAL_GALLERY.md)
+
+---
+
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 

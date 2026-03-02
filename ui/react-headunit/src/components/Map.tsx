@@ -12,7 +12,11 @@ interface Location {
     lon: number;
 }
 
-const Map: React.FC = () => {
+interface MapProps {
+    onLoaded?: () => void;
+}
+
+const Map: React.FC<MapProps> = ({ onLoaded }) => {
     const mapContainer = useRef<HTMLDivElement>(null);
     const map = useRef<maplibregl.Map | null>(null);
     const markersRef = useRef<maplibregl.Marker[]>([]);
@@ -86,6 +90,7 @@ const Map: React.FC = () => {
 
         map.current.on('load', () => {
             setMapLoaded(true);
+            if (onLoaded) onLoaded();
             // Initialize empty route sources
             if (map.current) {
                 map.current.addSource('route-main', {
@@ -123,7 +128,7 @@ const Map: React.FC = () => {
                 map.current = null;
             }
         };
-    }, []);
+    }, [onLoaded]);
 
     // Add location dots
     useEffect(() => {
