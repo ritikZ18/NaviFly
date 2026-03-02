@@ -961,3 +961,696 @@ body {
 .navigation-panel.light .location-label {
   color: #64748b;
 }
+
+/* ==========================================================================
+   ✅ UI Upgrade Pack CSS
+   ========================================================================== */
+
+:root {
+  --radius-lg: 24px;
+  --radius-md: 16px;
+  --radius-sm: 8px;
+  --shadow-soft: 0 10px 40px rgba(0, 0, 0, 0.4);
+  --glass-bg: rgba(20, 20, 20, 0.7);
+  --glass-blur: blur(16px);
+}
+
+/* 1) layout enhancements */
+.head-unit-container {
+  transition: grid-template-columns 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.head-unit-container.fullscreen {
+  grid-template-columns: 0px 1fr;
+}
+
+.navigation-panel {
+  padding: 2rem;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  border-right: 1px solid rgba(255, 255, 255, 0.05);
+  transition: transform 0.4s ease, opacity 0.4s ease;
+}
+
+.fullscreen .navigation-panel {
+  transform: translateX(-100%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* 2) Card & Input "Premium" Refresh */
+.instruction-card,
+.metrics-group,
+.simulation-info,
+.route-selection>div {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-soft);
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.instruction-card:hover,
+.metrics-group:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.location-dropdown,
+.btn-primary,
+.btn-danger,
+.btn-control {
+  border-radius: var(--radius-sm);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.btn-primary {
+  box-shadow: 0 4px 15px rgba(0, 123, 255, 0.3);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #0056b3;
+  transform: translateY(-1px);
+}
+
+/* 3) Custom Scrollbar */
+.navigation-panel::-webkit-scrollbar {
+  width: 4px;
+}
+
+.navigation-panel::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.navigation-panel::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+}
+
+/* 4) Map HUD Controls */
+.map-hud {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 100;
+  pointer-events: auto;
+}
+
+.hud-btn {
+  width: 44px;
+  height: 44px;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: 50%;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 1.2rem;
+  transition: all 0.2s;
+  box-shadow: var(--shadow-soft);
+}
+
+.hud-btn:hover {
+  background: var(--accent-color);
+  border-color: var(--accent-color);
+  transform: scale(1.1);
+}
+
+.hud-btn.active {
+  background: var(--accent-color);
+  box-shadow: 0 0 15px var(--accent-color);
+}
+
+/* 5) Special Ops / Scope Mode */
+.ops-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 50;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.5s ease;
+  overflow: hidden;
+}
+
+.map-wrapper.ops-scope .ops-overlay {
+  opacity: 1;
+  visibility: visible;
+}
+
+.ops-overlay::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at center, transparent 20%, rgba(0, 0, 0, 0.8) 70%);
+}
+
+.ops-reticle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100px;
+  height: 100px;
+  border: 1px solid rgba(0, 123, 255, 0.5);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.ops-reticle::before,
+.ops-reticle::after {
+  content: '';
+  position: absolute;
+  background: var(--accent-color);
+}
+
+.ops-reticle::before {
+  width: 40px;
+  height: 1px;
+  top: 50%;
+  left: -50px;
+}
+
+.ops-reticle::after {
+  height: 40px;
+  width: 1px;
+  left: 50%;
+  top: -50px;
+}
+
+.ops-rings {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 40vh;
+  height: 40vh;
+  border: 2px dashed rgba(0, 123, 255, 0.2);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  animation: rotate 20s linear infinite;
+}
+
+@keyframes rotate {
+  from {
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+
+  to {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+
+.ops-scanlines {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.1) 50%),
+    linear-gradient(90deg, rgba(255, 0, 0, 0.02), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.02));
+  background-size: 100% 4px, 3px 100%;
+  z-index: 2;
+}
+
+.ops-readouts {
+  position: absolute;
+  bottom: 40px;
+  left: 40px;
+  display: flex;
+  gap: 10px;
+}
+
+.ops-chip {
+  padding: 4px 10px;
+  background: var(--accent-color);
+  color: white;
+  font-size: 0.6rem;
+  font-weight: 800;
+  border-radius: 4px;
+  letter-spacing: 1px;
+}
+
+/* 6) Tactical Grid */
+.map-wrapper.ops-grid::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(0, 123, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 123, 255, 0.05) 1px, transparent 1px);
+  background-size: 100px 100px;
+  pointer-events: none;
+  z-index: 10;
+}
+
+/* =========================================================
+   ✅ NaviFly UI Refresh v2 (append-only override pack)
+   - Left panel redesign
+   - HUD + Scope + Grid + Visual Filters
+   - Fullscreen + Tracking UI polish
+   ========================================================= */
+
+/* ---------- New refined tokens (no map paint changes) ---------- */
+:root {
+  --radius-xs: 10px;
+  --radius-sm: 14px;
+  --radius-md: 18px;
+  --radius-lg: 22px;
+
+  --panel-pad: 18px;
+  --panel-gap: 14px;
+
+  --card-bg: rgba(22, 22, 22, 0.62);
+  --card-bg-strong: rgba(18, 18, 18, 0.78);
+  --card-border: rgba(255, 255, 255, 0.10);
+  --card-border-2: rgba(255, 255, 255, 0.14);
+
+  --muted: rgba(255, 255, 255, 0.70);
+  --muted-2: rgba(255, 255, 255, 0.55);
+
+  --shadow-1: 0 10px 30px rgba(0, 0, 0, 0.45);
+  --shadow-2: 0 18px 55px rgba(0, 0, 0, 0.55);
+
+  --focus: 0 0 0 3px rgba(0, 123, 255, 0.25);
+}
+
+/* ---------- Base polish ---------- */
+body {
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.navigation-panel {
+  padding: var(--panel-pad) !important;
+  gap: var(--panel-gap) !important;
+  background:
+    radial-gradient(1200px 600px at -20% 10%, rgba(0, 123, 255, 0.18), transparent 55%),
+    radial-gradient(900px 700px at 120% 40%, rgba(34, 197, 94, 0.10), transparent 55%),
+    linear-gradient(180deg, rgba(18, 18, 18, 0.92), rgba(10, 10, 10, 0.86)) !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
+  box-shadow: var(--shadow-2) !important;
+}
+
+.navigation-panel::-webkit-scrollbar {
+  width: 10px;
+}
+
+.navigation-panel::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  border: 2px solid rgba(0, 0, 0, 0.25);
+}
+
+.navigation-panel::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+/* ---------- Make panel sections look like premium cards ---------- */
+.panel-card,
+.instruction-card,
+.metrics-group,
+.simulation-info,
+.upcoming-stops {
+  background: var(--card-bg) !important;
+  border: 1px solid var(--card-border) !important;
+  border-radius: var(--radius-md) !important;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35) !important;
+  padding: 16px !important;
+}
+
+/* ---------- Brand header ---------- */
+.brand {
+  padding: 14px 14px 12px 14px !important;
+  background: var(--card-bg-strong) !important;
+  border: 1px solid var(--card-border-2) !important;
+  border-radius: var(--radius-lg) !important;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  backdrop-filter: blur(10px);
+}
+
+.brand h1 {
+  font-size: 1.55rem !important;
+  background: linear-gradient(135deg, #5aa7ff, #007bff, #2dd4bf);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin: 0 !important;
+}
+
+.brand p {
+  margin: 6px 0 0 0 !important;
+  color: var(--muted-2) !important;
+  font-size: 0.82rem !important;
+}
+
+/* ---------- Labels & section headings ---------- */
+.location-label,
+.selector-label {
+  font-size: 0.72rem !important;
+  letter-spacing: 0.12em !important;
+  text-transform: uppercase !important;
+  color: var(--muted-2) !important;
+  margin-bottom: 4px !important;
+}
+
+/* ---------- Select fields look more “headunit” ---------- */
+.location-dropdown,
+select.location-dropdown {
+  width: 100% !important;
+  border-radius: 16px !important;
+  padding: 0.85rem 0.95rem !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  background: rgba(10, 10, 10, 0.55) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+}
+
+/* ---------- Route options: fix “lines not working” ---------- */
+.route-options {
+  background: var(--card-bg) !important;
+  border: 1px solid var(--card-border) !important;
+  border-radius: var(--radius-md) !important;
+  padding: 12px !important;
+}
+
+.route-card {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 8px !important;
+  padding: 12px !important;
+  border-radius: 14px !important;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.2s;
+}
+
+.route-card+.route-card {
+  margin-top: 8px;
+  position: relative;
+}
+
+.route-card+.route-card::before {
+  content: "";
+  position: absolute;
+  top: -5px;
+  left: 12px;
+  right: 12px;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.route-card:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.route-card.active {
+  background: rgba(0, 123, 255, 0.12) !important;
+  border: 1px solid rgba(0, 123, 255, 0.35) !important;
+}
+
+.route-label {
+  font-weight: 700 !important;
+  color: white !important;
+}
+
+.badge.fastest {
+  background: #22c55e !important;
+  color: white !important;
+  padding: 2px 8px !important;
+  border-radius: 999px !important;
+  font-size: 0.65rem !important;
+  text-transform: uppercase !important;
+  font-weight: 800 !important;
+}
+
+/* ---------- Vehicle selector ---------- */
+.vehicle-buttons {
+  display: grid !important;
+  grid-template-columns: repeat(3, 1fr) !important;
+  gap: 10px !important;
+}
+
+.vehicle-btn {
+  border-radius: 18px !important;
+  padding: 12px 10px !important;
+  border: 1px solid rgba(255, 255, 255, 0.10) !important;
+  background: rgba(18, 18, 18, 0.55) !important;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.30) !important;
+}
+
+.vehicle-btn.active {
+  background: rgba(0, 123, 255, 0.14) !important;
+  border-color: rgba(0, 123, 255, 0.45) !important;
+  box-shadow: 0 14px 34px rgba(0, 123, 255, 0.12) !important;
+}
+
+/* ---------- Upcoming stops ---------- */
+.stop-item {
+  background: linear-gradient(90deg, rgba(239, 68, 68, 0.20), rgba(239, 68, 68, 0.05)) !important;
+  border-left: 3px solid rgba(239, 68, 68, 0.95) !important;
+  border-radius: 14px !important;
+  padding: 10px 12px !important;
+}
+
+/* ---------- ETA card ---------- */
+.eta-label {
+  font-variant-numeric: tabular-nums;
+  font-weight: 850 !important;
+  letter-spacing: -1.2px !important;
+}
+
+/* ---------- Buttons ---------- */
+.btn-primary,
+.btn-danger,
+.btn-control {
+  border-radius: 16px !important;
+  border: 1px solid rgba(255, 255, 255, 0.10) !important;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.35) !important;
+}
+
+/* =========================================================
+   MAP HUD + OPS (v2)
+   ========================================================= */
+
+.map-hud {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.hud-cluster {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: auto;
+}
+
+.hud-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 16px !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  background: rgba(12, 12, 12, 0.60) !important;
+  backdrop-filter: blur(10px);
+  color: rgba(255, 255, 255, 0.92) !important;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: all 0.15s ease;
+}
+
+.hud-btn.active {
+  background: rgba(0, 123, 255, 0.4) !important;
+  border-color: rgba(0, 123, 255, 0.6) !important;
+  box-shadow: 0 0 15px rgba(0, 123, 255, 0.3);
+}
+
+/* HUD Panel */
+.hud-pop {
+  pointer-events: auto;
+  width: 220px;
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(12, 12, 12, 0.85);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.55);
+  position: absolute;
+  right: 54px;
+  top: 108px;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-10px);
+  transition: all 0.2s ease;
+}
+
+.hud-pop.open {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.hud-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  color: white;
+  font-size: 0.9rem;
+}
+
+.hud-row:last-child {
+  border-bottom: none;
+}
+
+.hud-row select {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: white;
+  border-radius: 8px;
+  padding: 4px;
+}
+
+/* OPS Overlays */
+.ops-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 40;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.map-wrapper.ops-scope .ops-overlay {
+  opacity: 1;
+}
+
+/* Scope Mask */
+.map-wrapper.ops-scope .ops-overlay::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 50%,
+      transparent 0%,
+      transparent 46%,
+      rgba(0, 0, 0, 0.8) 56%,
+      rgba(0, 0, 0, 0.95) 75%);
+}
+
+.ops-rings {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: min(65vh, 65vw);
+  height: min(65vh, 65vw);
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 0 0 20px rgba(255, 255, 255, 0.02);
+}
+
+/* Visual Filters (Overlay-only) */
+.map-wrapper.vis-nvg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 34;
+  background: radial-gradient(circle at 50% 50%, rgba(0, 255, 160, 0.1), transparent 70%);
+  mix-blend-mode: screen;
+  opacity: 0.6;
+  background-color: rgba(0, 255, 100, 0.1);
+}
+
+.map-wrapper.vis-thermal::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 34;
+  background: linear-gradient(180deg, rgba(255, 40, 40, 0.1), rgba(0, 0, 0, 0.2));
+  mix-blend-mode: color;
+  opacity: 0.7;
+}
+
+.map-wrapper.vis-mono::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 34;
+  background: rgba(255, 255, 255, 0.1);
+  mix-blend-mode: saturation;
+  opacity: 0.8;
+}
+
+.map-wrapper.vis-amber::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 34;
+  background: rgba(255, 200, 0, 0.12);
+  mix-blend-mode: screen;
+  opacity: 0.5;
+}
+
+/* Grid Override (Premium v2) */
+.map-wrapper.ops-grid::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 35;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 50px 50px;
+  mix-blend-mode: overlay;
+}
+
+/* System Status (GPS/Time) */
+.system-status {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  background: rgba(0, 0, 0, 0.5);
+  padding: 12px 24px;
+  border-radius: 999px;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 0.8rem;
+  text-align: center;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.system-status .gps {
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: #22c55e;
+}
+
+.system-status .time {
+  font-size: 0.75rem;
+  opacity: 0.8;
+  font-variant-numeric: tabular-nums;
+}

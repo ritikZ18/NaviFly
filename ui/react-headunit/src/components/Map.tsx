@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useRoute } from '../context/RouteContext';
+import type { RoadGeometry } from '../context/RouteContext';
 import RouteLoader from './RouteLoader';
 
 interface Location {
@@ -26,7 +27,7 @@ const Map: React.FC = () => {
     const {
         startId, endId, roadGeometry, alternativeRoutes, selectedRouteIndex,
         isNavigating, simulation, vehicle, selectRoute, setRoadGeometry, setOptimalGeometry, setAlternativeRoutes,
-        isStartingNavigation
+        isStartingNavigation, isTracking
     } = useRoute();
 
     const hasFetchedLocations = useRef(false);
@@ -198,7 +199,7 @@ const Map: React.FC = () => {
                             type: 'Feature',
                             properties: { quality: 'interpolated' },
                             geometry: { type: 'LineString', coordinates: coords }
-                        } as any);
+                        } as RoadGeometry);
                     }
                 }
             } catch (e) {
@@ -217,14 +218,14 @@ const Map: React.FC = () => {
                     setOptimalGeometry(bestRoute.geometry);
 
                     interface EnhancedRoute {
-                        geometry: any;
+                        geometry: [number, number][];
                         distance: number;
                         duration: number;
                         label: string;
                     }
                     const alternatives = data.routes.slice(1).map((route: EnhancedRoute) => ({
                         label: route.label,
-                        geometry: route.geometry,
+                        geometry: route.geometry as [number, number][],
                         distance: route.distance / 1000,
                         duration: route.duration / 60
                     }));
@@ -302,11 +303,11 @@ const Map: React.FC = () => {
         const mainSource = map.current.getSource('route-main') as maplibregl.GeoJSONSource;
         if (mainSource && isNavigating && roadGeometry) {
             // roadGeometry might be FeatureCollection now
-            mainSource.setData(roadGeometry as any);
+            mainSource.setData(roadGeometry as unknown as GeoJSON.Feature | GeoJSON.FeatureCollection);
             map.current.setLayoutProperty('route-main', 'visibility', 'visible');
 
             // Apply traffic colors if it's a FeatureCollection
-            const isFC = (roadGeometry as any).type === 'FeatureCollection';
+            const isFC = !Array.isArray(roadGeometry) && roadGeometry.type === 'FeatureCollection';
             if (isFC) {
                 map.current.setPaintProperty('route-main', 'line-color', [
                     'match',
@@ -329,11 +330,12 @@ const Map: React.FC = () => {
         for (let i = 0; i < 3; i++) {
             const altSource = map.current.getSource(`route-alt-${i}`) as maplibregl.GeoJSONSource;
             if (altSource && isNavigating && alternativeRoutes[i]) {
-                altSource.setData(alternativeRoutes[i].geometry as any);
+                altSource.setData(alternativeRoutes[i].geometry as unknown as GeoJSON.Feature);
                 map.current.setLayoutProperty(`route-alt-${i}`, 'visibility', 'visible');
 
                 const isSelected = selectedRouteIndex === i + 1;
-                const isFC = (alternativeRoutes[i].geometry as any).type === 'FeatureCollection';
+                const geom = alternativeRoutes[i].geometry;
+                const isFC = !Array.isArray(geom) && (geom as { type?: string }).type === 'FeatureCollection';
 
                 if (isFC && isSelected) {
                     map.current.setPaintProperty(`route-alt-${i}`, 'line-color', [
@@ -360,12 +362,13 @@ const Map: React.FC = () => {
         // Fit bounds once when navigation starts
         if (isNavigating && roadGeometry && !simulation.isRunning) {
             let coords: [number, number][] = [];
-            if (Array.isArray(roadGeometry)) {
-                coords = roadGeometry;
-            } else if ((roadGeometry as any).type === 'FeatureCollection') {
-                coords = (roadGeometry as any).features.flatMap((f: any) => f.geometry.coordinates);
-            } else if ((roadGeometry as any).type === 'Feature') {
-                coords = (roadGeometry as any).geometry.coordinates;
+            const geom = roadGeometry;
+            if (Array.isArray(geom)) {
+                coords = geom;
+            } else if (geom.type === 'FeatureCollection') {
+                coords = geom.features.flatMap((f) => (f as { geometry: { coordinates: [number, number][] } }).geometry.coordinates);
+            } else if (geom.type === 'Feature') {
+                coords = geom.geometry.coordinates;
             }
 
             if (coords.length >= 2) {
@@ -421,6 +424,17 @@ const Map: React.FC = () => {
             vehicleMarkerRef.current = null;
         }
     }, [simulation.currentPosition, simulation.isRunning, vehicle.icon, mapLoaded]);
+
+    // Tracking Logic: Auto-center map on vehicle
+    useEffect(() => {
+        if (!map.current || !mapLoaded || !isTracking || !simulation.currentPosition || !simulation.isRunning) return;
+
+        map.current.easeTo({
+            center: simulation.currentPosition,
+            duration: 800,
+            essential: true
+        });
+    }, [simulation.currentPosition, isTracking, mapLoaded, simulation.isRunning]);
 
     // Break point markers - red dots with duration tooltip
     const breakMarkersRef = useRef<maplibregl.Marker[]>([]);

@@ -1,11 +1,22 @@
 import { useState, useEffect } from 'react'
 import Map from './components/Map'
 import NavigationPanel from './components/NavigationPanel'
-import { RouteProvider } from './context/RouteContext'
+import { RouteProvider, useRoute } from './context/RouteContext'
 import './index.css'
 
-function App() {
+function HeadUnit() {
   const [currentTime, setCurrentTime] = useState(new Date())
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const [isScope, setIsScope] = useState(false)
+  const [isGrid, setIsGrid] = useState(false)
+  const [isOpsMenuOpen, setIsOpsMenuOpen] = useState(false)
+
+  const {
+    isTracking,
+    visualMode,
+    setIsTracking,
+    setVisualMode
+  } = useRoute();
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000)
@@ -20,31 +31,67 @@ function App() {
     })
   }
 
+  const toggleFullscreen = () => setIsFullscreen(!isFullscreen)
+  const toggleScope = () => setIsScope(!isScope)
+  const toggleGrid = () => setIsGrid(!isGrid)
+
   return (
-    <RouteProvider>
-      <div className="head-unit-container">
-        <NavigationPanel />
-        <div className="map-wrapper" style={{ position: 'relative' }}>
-          <Map />
-          <div style={{
-            position: 'absolute',
-            top: '20px',
-            right: '20px',
-            background: 'rgba(0,0,0,0.5)',
-            padding: '10px 20px',
-            borderRadius: '50px',
-            backdropFilter: 'blur(5px)',
-            border: '1px solid rgba(255,255,255,0.1)',
-            fontSize: '0.8rem',
-            textAlign: 'center'
-          }}>
-            <div>GPS: FIXED • Arizona</div>
-            <div style={{ fontSize: '0.75rem', opacity: 0.8, marginTop: '4px' }}>
-              {formatTime(currentTime)}
+    <div className={`head-unit-container ${isFullscreen ? 'fullscreen' : ''}`}>
+      <NavigationPanel />
+      <div className={`map-wrapper ${isScope ? 'ops-scope' : ''} ${isGrid ? 'ops-grid' : ''} vis-${visualMode}`} style={{ position: 'relative' }}>
+        <Map />
+
+        {/* Map HUD Controls */}
+        <div className="map-hud">
+          <div className="hud-cluster">
+            <button className={`hud-btn ${isFullscreen ? 'active' : ''}`} title="Fullscreen" onClick={toggleFullscreen}>⛶</button>
+            <button className={`hud-btn ${isScope ? 'active' : ''}`} title="Scope Mode" onClick={toggleScope}>◎</button>
+            <button className={`hud-btn ${isGrid ? 'active' : ''}`} title="Grid" onClick={toggleGrid}>⌗</button>
+            <button className={`hud-btn ${isOpsMenuOpen ? 'active' : ''}`} title="Ops Options" onClick={() => setIsOpsMenuOpen(!isOpsMenuOpen)}>⚙</button>
+
+            <div className={`hud-pop ${isOpsMenuOpen ? 'open' : ''}`}>
+              <div className="hud-row">
+                <span>Track Vehicle</span>
+                <input type="checkbox" checked={isTracking} onChange={(e) => setIsTracking(e.target.checked)} />
+              </div>
+              <div className="hud-row">
+                <span>Visual</span>
+                <select value={visualMode} onChange={(e) => setVisualMode(e.target.value as 'normal' | 'nvg' | 'thermal' | 'mono' | 'amber')}>
+                  <option value="normal">Normal</option>
+                  <option value="nvg">NVG Green</option>
+                  <option value="thermal">Thermal</option>
+                  <option value="mono">Mono</option>
+                  <option value="amber">Amber</option>
+                </select>
+              </div>
             </div>
           </div>
         </div>
+
+        {/* Ops / Scope Overlays */}
+        <div className="ops-overlay" aria-hidden="true">
+          <div className="ops-reticle"></div>
+          <div className="ops-rings"></div>
+          <div className="ops-scanlines"></div>
+          <div className="ops-readouts">
+            <span className="ops-chip">OPS</span>
+            <span className="ops-chip">{isTracking ? 'TRACK' : 'LIVE'}</span>
+          </div>
+        </div>
+
+        <div className="system-status">
+          <div className="gps">GPS: FIXED • Arizona</div>
+          <div className="time">{formatTime(currentTime)}</div>
+        </div>
       </div>
+    </div>
+  )
+}
+
+function App() {
+  return (
+    <RouteProvider>
+      <HeadUnit />
     </RouteProvider>
   )
 }
