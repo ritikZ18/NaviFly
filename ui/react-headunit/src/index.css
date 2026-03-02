@@ -127,30 +127,314 @@ body {
   gap: 0.75rem;
 }
 
-.location-selector {
+.location-selector,
+.searchable-input-wrapper {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+  position: relative;
 }
 
 .location-label {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   opacity: 0.7;
+  font-weight: 600;
 }
 
-.icon-start {
+.icon-start,
+.search-icon.icon-start {
   color: #4ade80;
 }
 
-.icon-end {
+.icon-end,
+.search-icon.icon-end {
   color: #f87171;
 }
 
+.icon-stop,
+.search-icon.icon-stop {
+  color: #facc15;
+}
+
+/* Search Input Field */
+.search-input-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.search-field-icon {
+  position: absolute;
+  left: 12px;
+  color: rgba(255, 255, 255, 0.3);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.search-input {
+  width: 100%;
+  background: rgba(30, 30, 30, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 0.7rem 2.2rem 0.7rem 2.2rem;
+  color: white;
+  font-size: 0.9rem;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+
+.search-input::placeholder {
+  color: rgba(255, 255, 255, 0.25);
+  font-size: 0.85rem;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.15);
+}
+
+.search-clear-btn {
+  position: absolute;
+  right: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  border: none;
+  color: rgba(255, 255, 255, 0.4);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+
+.search-clear-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: white;
+}
+
+/* Search Dropdown */
+.search-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 200;
+  background: rgba(18, 18, 22, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  margin-top: 4px;
+  max-height: 220px;
+  overflow-y: auto;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(12px);
+}
+
+.search-dropdown::-webkit-scrollbar {
+  width: 4px;
+}
+
+.search-dropdown::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+}
+
+.search-results-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+}
+
+.search-result-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+  border-radius: 8px;
+  font-size: 0.88rem;
+  color: rgba(255, 255, 255, 0.8);
+  transition: background 0.12s;
+}
+
+.search-result-item:hover,
+.search-result-item.highlighted {
+  background: rgba(0, 123, 255, 0.12);
+  color: white;
+}
+
+.search-result-item.selected {
+  color: var(--accent-color);
+  font-weight: 600;
+}
+
+.result-pin {
+  opacity: 0.4;
+  flex-shrink: 0;
+}
+
+.search-highlight {
+  background: rgba(0, 123, 255, 0.25);
+  color: white;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+.search-no-results {
+  padding: 16px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.3);
+  font-size: 0.85rem;
+}
+
+/* Waypoints / Stops List */
+.waypoints-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 0;
+  border-left: 2px dashed rgba(250, 204, 21, 0.25);
+  margin-left: 8px;
+  padding-left: 12px;
+}
+
+.waypoint-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.waypoint-row .searchable-input-wrapper {
+  flex: 1;
+  min-width: 0;
+}
+
+.waypoint-number {
+  width: 20px;
+  height: 20px;
+  background: rgba(250, 204, 21, 0.15);
+  border: 1px solid rgba(250, 204, 21, 0.3);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.6rem;
+  font-weight: 800;
+  color: #facc15;
+  flex-shrink: 0;
+  margin-bottom: 4px;
+}
+
+.waypoint-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 4px;
+}
+
+.wp-btn {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.4);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.12s;
+}
+
+.wp-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+}
+
+.wp-btn:disabled {
+  opacity: 0.2;
+  cursor: not-allowed;
+}
+
+.wp-btn.wp-remove:hover {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  border-color: rgba(239, 68, 68, 0.2);
+}
+
+/* Add Stop Button */
+.add-stop-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px;
+  background: rgba(250, 204, 21, 0.05);
+  border: 1px dashed rgba(250, 204, 21, 0.2);
+  border-radius: 8px;
+  color: rgba(250, 204, 21, 0.7);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  letter-spacing: 0.04em;
+  transition: all 0.2s;
+}
+
+.add-stop-btn:hover {
+  background: rgba(250, 204, 21, 0.1);
+  border-color: rgba(250, 204, 21, 0.4);
+  color: #facc15;
+}
+
+/* Find Route Button */
+.btn-find-route {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px 16px;
+  margin-top: 8px;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(99, 102, 241, 0.2));
+  border: 1px solid rgba(59, 130, 246, 0.4);
+  border-radius: 10px;
+  color: #60a5fa;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+
+.btn-find-route:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.35), rgba(99, 102, 241, 0.35));
+  border-color: rgba(59, 130, 246, 0.7);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(59, 130, 246, 0.2);
+}
+
+.btn-find-route:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-find-route.route-confirmed {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.15), rgba(16, 185, 129, 0.15));
+  border-color: rgba(34, 197, 94, 0.4);
+  color: #4ade80;
+}
+
+.btn-find-route.route-confirmed:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.25), rgba(16, 185, 129, 0.25));
+  border-color: rgba(34, 197, 94, 0.6);
+}
+
+/* Legacy compat */
 .location-dropdown {
   background: rgba(40, 40, 40, 0.8);
   border: 1px solid var(--glass-border);
@@ -485,6 +769,41 @@ body {
   font-size: 0.85rem;
 }
 
+/* Map Style Toggle (Satellite / Street) */
+.map-style-toggle {
+  position: absolute;
+  bottom: 50px;
+  right: 12px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: rgba(10, 10, 14, 0.85);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  letter-spacing: 0.03em;
+  transition: all 0.2s;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.map-style-toggle:hover {
+  background: rgba(20, 20, 28, 0.95);
+  border-color: rgba(255, 255, 255, 0.25);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+}
+
+.map-style-toggle .style-label {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
 .legend-item {
   display: flex;
   align-items: center;
@@ -654,6 +973,25 @@ body {
 
 .marker-glow.orange {
   background: radial-gradient(circle, rgba(245, 158, 11, 0.6) 0%, rgba(245, 158, 11, 0) 70%);
+}
+
+.marker-glow.yellow {
+  background: radial-gradient(circle, rgba(250, 204, 21, 0.5) 0%, rgba(250, 204, 21, 0) 70%);
+}
+
+.waypoint-marker-number {
+  width: 24px;
+  height: 24px;
+  background: #facc15;
+  border: 2px solid #a16207;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 800;
+  color: #1a1a1a;
+  box-shadow: 0 2px 8px rgba(250, 204, 21, 0.4);
 }
 
 @keyframes pulse-glow {

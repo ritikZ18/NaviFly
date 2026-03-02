@@ -25,13 +25,14 @@ const Map: React.FC<MapProps> = ({ onLoaded }) => {
     const vehicleMarkerRef = useRef<maplibregl.Marker | null>(null);
     const [locations, setLocations] = useState<Location[]>([]);
     const [mapLoaded, setMapLoaded] = useState(false);
+    const [mapStyle, setMapStyle] = useState<'street' | 'satellite'>('street');
     const routesInitialized = useRef(false);
     const initialFitDone = useRef(false);
 
     const {
         startId, endId, roadGeometry, alternativeRoutes, selectedRouteIndex,
         isNavigating, simulation, vehicle, selectRoute, setRoadGeometry, setOptimalGeometry, setAlternativeRoutes,
-        isStartingNavigation, isTracking, isScope, camSettings
+        isStartingNavigation, isTracking, isScope, camSettings, waypoints
     } = useRoute();
 
     const hasFetchedLocations = useRef(false);
@@ -80,15 +81,34 @@ const Map: React.FC<MapProps> = ({ onLoaded }) => {
                         ],
                         tileSize: 256,
                         attribution: '© OpenStreetMap contributors'
+                    },
+                    'satellite': {
+                        type: 'raster',
+                        tiles: [
+                            'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+                        ],
+                        tileSize: 256,
+                        maxzoom: 18,
+                        attribution: '© Esri, Maxar, Earthstar Geographics'
                     }
                 },
-                layers: [{
-                    id: 'osm',
-                    type: 'raster',
-                    source: 'osm',
-                    minzoom: 0,
-                    maxzoom: 19
-                }]
+                layers: [
+                    {
+                        id: 'osm',
+                        type: 'raster',
+                        source: 'osm',
+                        minzoom: 0,
+                        maxzoom: 19
+                    },
+                    {
+                        id: 'satellite',
+                        type: 'raster',
+                        source: 'satellite',
+                        minzoom: 0,
+                        maxzoom: 19,
+                        layout: { visibility: 'none' }
+                    }
+                ]
             },
             center: [-111.9, 34.0],
             zoom: 6,
@@ -171,24 +191,29 @@ const Map: React.FC<MapProps> = ({ onLoaded }) => {
     const fetchRouteWithAlternatives = useCallback(async () => {
         if (!startId || !endId || startId === endId) return;
 
+        // Filter valid waypoints (non-temp, with real coordinates)
+        const validWaypoints = waypoints.filter(wp => wp.id && !wp.id.startsWith('temp-') && wp.lat !== 0);
+
         let isHighQualityActive = false;
 
-        // Check Cache First
-        const cacheKey = `route-cache-${startId}-${endId}`;
-        const cached = localStorage.getItem(cacheKey);
-        if (cached) {
-            try {
-                const data = JSON.parse(cached);
-                if (data.optimal) {
-                    setOptimalGeometry(data.optimal);
-                    setAlternativeRoutes(data.alternatives);
-                    console.log('Loaded route from cache');
-                    if (data.optimal.type === 'FeatureCollection') {
-                        isHighQualityActive = true;
+        // Cache only works for direct A→B routes (no waypoints)
+        if (validWaypoints.length === 0) {
+            const cacheKey = `route-cache-${startId}-${endId}`;
+            const cached = localStorage.getItem(cacheKey);
+            if (cached) {
+                try {
+                    const data = JSON.parse(cached);
+                    if (data.optimal) {
+                        setOptimalGeometry(data.optimal);
+                        setAlternativeRoutes(data.alternatives);
+                        console.log('Loaded route from cache');
+                        if (data.optimal.type === 'FeatureCollection') {
+                            isHighQualityActive = true;
+                        }
                     }
+                } catch (e) {
+                    console.warn('Failed to parse cached route:', e);
                 }
-            } catch (e) {
-                console.warn('Failed to parse cached route:', e);
             }
         }
 
@@ -196,9 +221,8 @@ const Map: React.FC<MapProps> = ({ onLoaded }) => {
         const endLoc = locations.find(l => l.id === endId);
         if (!startLoc || !endLoc) return;
 
-        // Optimistic first pass: Try local interpolation immediately to show SOMETHING
-        // ONLY if we don't have high-quality data from cache
-        if (!isHighQualityActive) {
+        // Optimistic first pass (only for direct routes without waypoints)
+        if (!isHighQualityActive && validWaypoints.length === 0) {
             try {
                 const localUrl = `http://localhost:8080/route?start=${startId}&end=${endId}`;
                 const response = await fetch(localUrl);
@@ -220,9 +244,15 @@ const Map: React.FC<MapProps> = ({ onLoaded }) => {
             }
         }
 
-        // Second pass: Try OSRM proxy for "Optimal" path (always background update for traffic)
+        // Main route fetch: include stops if present
         try {
-            const proxyUrl = `http://localhost:8080/osrm-route?start=${startId}&end=${endId}`;
+            let proxyUrl = `http://localhost:8080/osrm-route?start=${startId}&end=${endId}`;
+            if (validWaypoints.length > 0) {
+                const stopIds = validWaypoints.map(wp => wp.id).join(',');
+                proxyUrl += `&stops=${stopIds}`;
+                console.log(`Multi-stop route: ${startId} → [${stopIds}] → ${endId}`);
+            }
+
             const response = await fetch(proxyUrl);
             if (response.ok) {
                 const data = await response.json();
@@ -244,25 +274,61 @@ const Map: React.FC<MapProps> = ({ onLoaded }) => {
                     }));
                     setAlternativeRoutes(alternatives);
 
-                    // Save to Cache
-                    localStorage.setItem(cacheKey, JSON.stringify({
-                        optimal: bestRoute.geometry,
-                        alternatives: alternatives,
-                        timestamp: Date.now()
-                    }));
+                    // Cache only direct routes
+                    if (validWaypoints.length === 0) {
+                        const cacheKey = `route-cache-${startId}-${endId}`;
+                        localStorage.setItem(cacheKey, JSON.stringify({
+                            optimal: bestRoute.geometry,
+                            alternatives: alternatives,
+                            timestamp: Date.now()
+                        }));
+                    }
                 }
             }
         } catch (proxyError) {
             console.warn('OSRM proxy failed, adhering to persistent geometry:', proxyError);
         }
-    }, [startId, endId, locations, setRoadGeometry, setOptimalGeometry, setAlternativeRoutes]);
+    }, [startId, endId, waypoints, locations, setRoadGeometry, setOptimalGeometry, setAlternativeRoutes]);
 
-    // Fetch routes when start/end changes
+    // Expose fetchRouteWithAlternatives to parent via routeContext
+    // Instead of auto-fetching, we store the function on a ref that NavigationPanel can trigger
+    const fetchRouteRef = useRef(fetchRouteWithAlternatives);
+    fetchRouteRef.current = fetchRouteWithAlternatives;
+
+    // Make the fetch function available globally through window for cross-component communication
     useEffect(() => {
-        if (startId && endId && locations.length > 0) {
-            fetchRouteWithAlternatives();
-        }
-    }, [startId, endId, locations, fetchRouteWithAlternatives]);
+        (window as unknown as Record<string, unknown>).__naviflyFetchRoute = fetchRouteWithAlternatives;
+        return () => {
+            delete (window as unknown as Record<string, unknown>).__naviflyFetchRoute;
+        };
+    }, [fetchRouteWithAlternatives]);
+
+    // Waypoint markers (yellow numbered stops)
+    const waypointMarkersRef = useRef<maplibregl.Marker[]>([]);
+
+    useEffect(() => {
+        if (!map.current || !mapLoaded) return;
+
+        // Clear old waypoint markers
+        waypointMarkersRef.current.forEach(m => m.remove());
+        waypointMarkersRef.current = [];
+
+        const validWaypoints = waypoints.filter(wp => wp.id && !wp.id.startsWith('temp-') && wp.lat !== 0);
+
+        validWaypoints.forEach((wp, i) => {
+            const el = document.createElement('div');
+            el.className = 'route-marker waypoint-marker';
+            el.innerHTML = `
+                <div class="marker-glow yellow"></div>
+                <div class="waypoint-marker-number">${i + 1}</div>
+                <div class="marker-label">${wp.name}</div>
+            `;
+            const marker = new maplibregl.Marker({ element: el })
+                .setLngLat([wp.lon, wp.lat])
+                .addTo(map.current!);
+            waypointMarkersRef.current.push(marker);
+        });
+    }, [waypoints, mapLoaded]);
 
     // Start marker with glow
     useEffect(() => {
@@ -522,6 +588,23 @@ const Map: React.FC<MapProps> = ({ onLoaded }) => {
                 </div>
             </div>
             {isStartingNavigation && <RouteLoader message="Finding best route..." />}
+
+            {/* Map Style Toggle */}
+            <button
+                className="map-style-toggle"
+                onClick={() => {
+                    const newStyle = mapStyle === 'street' ? 'satellite' : 'street';
+                    setMapStyle(newStyle);
+                    if (map.current) {
+                        map.current.setLayoutProperty('osm', 'visibility', newStyle === 'street' ? 'visible' : 'none');
+                        map.current.setLayoutProperty('satellite', 'visibility', newStyle === 'satellite' ? 'visible' : 'none');
+                    }
+                }}
+                title={mapStyle === 'street' ? 'Switch to Satellite' : 'Switch to Street'}
+            >
+                {mapStyle === 'street' ? '🛰️' : '🗺️'}
+                <span className="style-label">{mapStyle === 'street' ? 'Satellite' : 'Street'}</span>
+            </button>
         </div>
     );
 };

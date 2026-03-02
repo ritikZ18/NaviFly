@@ -63,6 +63,7 @@ type Location struct {
 }
 
 var locations = []Location{
+	// Major Cities
 	{"phx", "Phoenix Downtown", 33.4484, -112.0740},
 	{"scottsdale", "Scottsdale Old Town", 33.4942, -111.9261},
 	{"tempe", "Tempe (ASU)", 33.4255, -111.9400},
@@ -88,6 +89,45 @@ var locations = []Location{
 	{"prescott", "Prescott", 34.5400, -112.4685},
 	{"lake-havasu", "Lake Havasu City", 34.5066, -114.2690},
 	{"nogales", "Nogales", 31.3404, -110.9348},
+
+	// Airports
+	{"phx-airport", "Phoenix Sky Harbor (PHX)", 33.4373, -112.0078},
+	{"tus-airport", "Tucson International (TUS)", 32.1161, -110.9410},
+	{"flg-airport", "Flagstaff Pulliam (FLG)", 35.1385, -111.6711},
+	{"mesa-gateway", "Mesa Gateway Airport (AZA)", 33.3078, -111.6553},
+
+	// National Parks & Landmarks
+	{"saguaro-east", "Saguaro National Park (East)", 32.1797, -110.7380},
+	{"saguaro-west", "Saguaro National Park (West)", 32.2477, -111.1880},
+	{"petrified-forest", "Petrified Forest NP", 34.9100, -109.7880},
+	{"monument-valley", "Monument Valley", 36.9980, -110.0985},
+	{"horseshoe-bend", "Horseshoe Bend", 36.8791, -111.5104},
+	{"antelope-canyon", "Antelope Canyon (Page)", 36.8619, -111.3743},
+	{"tombstone", "Tombstone", 31.7129, -110.0676},
+	{"meteor-crater", "Meteor Crater", 35.0275, -111.0228},
+
+	// Universities & Campuses
+	{"asu-downtown", "ASU Downtown Phoenix", 33.4510, -112.0663},
+	{"uofa", "University of Arizona", 32.2319, -110.9501},
+	{"nau", "Northern Arizona University", 35.1889, -111.6543},
+	{"gcu", "Grand Canyon University", 33.5086, -112.1258},
+
+	// Regional Towns
+	{"pinetop", "Pinetop-Lakeside", 34.1420, -109.9295},
+	{"winslow", "Winslow", 35.0242, -110.6973},
+	{"williams", "Williams", 35.2494, -112.1910},
+	{"cottonwood", "Cottonwood", 34.7392, -112.0099},
+	{"camp-verde", "Camp Verde", 34.5636, -111.8543},
+	{"wickenburg", "Wickenburg", 33.9686, -112.7296},
+	{"florence", "Florence", 33.0314, -111.3873},
+	{"safford", "Safford", 32.8340, -109.7076},
+	{"clifton", "Clifton", 33.0509, -109.2962},
+	{"globe", "Globe", 33.3942, -110.7866},
+	{"apache-jct", "Apache Junction", 33.4150, -111.5495},
+	{"fountain-hills", "Fountain Hills", 33.6117, -111.7174},
+	{"paradise-valley", "Paradise Valley", 33.5310, -111.9426},
+	{"cave-creek", "Cave Creek", 33.8322, -111.9507},
+	{"carefree", "Carefree", 33.8222, -111.9182},
 }
 
 func main() {
@@ -150,13 +190,27 @@ func main() {
 func HandleRoute(w http.ResponseWriter, r *http.Request) {
 	startID := r.URL.Query().Get("start")
 	endID := r.URL.Query().Get("end")
+	stopsParam := r.URL.Query().Get("stops") // comma-separated location IDs
 
 	if startID == "" || endID == "" {
 		http.Error(w, "Missing start or end parameter", http.StatusBadRequest)
 		return
 	}
 
-	// 1. Check DB Cache
+	// If stops are provided, use multi-waypoint routing (skip cache)
+	if stopsParam != "" {
+		log.Printf("Multi-stop route: %s → [%s] → %s", startID, stopsParam, endID)
+		resp, err := fetchMultiStopRoute(startID, endID, stopsParam)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	// 1. Check DB Cache (only for direct A→B routes)
 	var cached RouteCache
 	if err := db.Where("start_id = ? AND end_id = ?", startID, endID).First(&cached).Error; err == nil {
 		log.Printf("✅ DB hit: %s → %s", startID, endID)
@@ -188,6 +242,136 @@ type OSRMResponse struct {
 		Duration float64 `json:"duration"`
 	} `json:"routes"`
 	Code string `json:"code"`
+}
+
+func findLocation(id string) (Location, bool) {
+	for _, loc := range locations {
+		if loc.ID == id {
+			return loc, true
+		}
+	}
+	return Location{}, false
+}
+
+func fetchMultiStopRoute(startID, endID, stopsParam string) (*EnhancedResponse, error) {
+	startLoc, ok := findLocation(startID)
+	if !ok {
+		return nil, fmt.Errorf("unknown start location: %s", startID)
+	}
+	endLoc, ok := findLocation(endID)
+	if !ok {
+		return nil, fmt.Errorf("unknown end location: %s", endID)
+	}
+
+	// Build coordinate string: start;stop1;stop2;...;end
+	coordParts := []string{fmt.Sprintf("%f,%f", startLoc.Lon, startLoc.Lat)}
+
+	stopIDs := splitStops(stopsParam)
+	for _, sid := range stopIDs {
+		sLoc, ok := findLocation(sid)
+		if !ok {
+			log.Printf("⚠️ Unknown stop ID %s, skipping", sid)
+			continue
+		}
+		coordParts = append(coordParts, fmt.Sprintf("%f,%f", sLoc.Lon, sLoc.Lat))
+	}
+
+	coordParts = append(coordParts, fmt.Sprintf("%f,%f", endLoc.Lon, endLoc.Lat))
+
+	// Build OSRM URL with all waypoints
+	coordStr := ""
+	for i, p := range coordParts {
+		if i > 0 {
+			coordStr += ";"
+		}
+		coordStr += p
+	}
+
+	url := fmt.Sprintf(
+		"http://router.project-osrm.org/route/v1/driving/%s?overview=full&geometries=geojson&alternatives=false",
+		coordStr,
+	)
+
+	log.Printf("🗺️ Multi-stop OSRM URL: %s", url)
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("OSRM multi-stop request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read OSRM response: %v", err)
+	}
+
+	var osrmResp OSRMResponse
+	if err := json.Unmarshal(body, &osrmResp); err != nil {
+		return nil, fmt.Errorf("failed to parse OSRM response: %v", err)
+	}
+
+	if osrmResp.Code != "Ok" || len(osrmResp.Routes) == 0 {
+		return nil, fmt.Errorf("OSRM returned no routes (code: %s)", osrmResp.Code)
+	}
+
+	// Build enhanced response
+	enhancedResp := EnhancedResponse{Routes: []EnhancedRoute{}}
+
+	for i, osrmRoute := range osrmResp.Routes {
+		coords := make([][2]float64, len(osrmRoute.Geometry.Coordinates))
+		for j, c := range osrmRoute.Geometry.Coordinates {
+			coords[j] = [2]float64{c[0], c[1]}
+		}
+
+		fc := buildTrafficFeatureCollection(coords, i)
+
+		enhancedResp.Routes = append(enhancedResp.Routes, EnhancedRoute{
+			Geometry:   fc,
+			Distance:   osrmRoute.Distance,
+			Duration:   osrmRoute.Duration,
+			Label:      "Multi-Stop Route",
+			FullCoords: coords,
+		})
+	}
+
+	log.Printf("✅ Multi-stop route: %d waypoints, %.1f km", len(coordParts), osrmResp.Routes[0].Distance/1000)
+	return &enhancedResp, nil
+}
+
+func splitStops(s string) []string {
+	var result []string
+	for _, part := range splitString(s, ',') {
+		trimmed := trimSpace(part)
+		if trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
+}
+
+func splitString(s string, sep byte) []string {
+	var parts []string
+	start := 0
+	for i := 0; i < len(s); i++ {
+		if s[i] == sep {
+			parts = append(parts, s[start:i])
+			start = i + 1
+		}
+	}
+	parts = append(parts, s[start:])
+	return parts
+}
+
+func trimSpace(s string) string {
+	start, end := 0, len(s)
+	for start < end && s[start] == ' ' {
+		start++
+	}
+	for end > start && s[end-1] == ' ' {
+		end--
+	}
+	return s[start:end]
 }
 
 func fetchOSRMRoute(startLon, startLat, endLon, endLat float64, alternatives bool) (*OSRMResponse, error) {

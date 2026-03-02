@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
 import type { Vehicle, SimulationState } from '../simulation/Vehicle';
 import { defaultSimulationState, SimulationEngine, VehicleFactory } from '../simulation';
 
-interface RouteNode {
+export interface RouteNode {
     id: string;
     name: string;
     lat: number;
@@ -26,6 +26,9 @@ export type RoadGeometry =
 interface RouteState {
     startId: string;
     endId: string;
+    startLocation: RouteNode | null;
+    endLocation: RouteNode | null;
+    waypoints: RouteNode[]; // max 5 intermediate stops
     routeNodes: RouteNode[];
     roadGeometry: RoadGeometry | null;
     optimalGeometry: RoadGeometry | null;
@@ -50,6 +53,12 @@ interface RouteState {
 interface RouteContextType extends RouteState {
     setStartId: (id: string) => void;
     setEndId: (id: string) => void;
+    setStartLocation: (loc: RouteNode | null) => void;
+    setEndLocation: (loc: RouteNode | null) => void;
+    addWaypoint: (loc: RouteNode) => void;
+    removeWaypoint: (index: number) => void;
+    reorderWaypoints: (from: number, to: number) => void;
+    clearWaypoints: () => void;
     setRouteNodes: (nodes: RouteNode[]) => void;
     setRoadGeometry: (geometry: RoadGeometry | null) => void;
     setOptimalGeometry: (geometry: RoadGeometry | null) => void;
@@ -79,6 +88,9 @@ const defaultVehicle = VehicleFactory.create('car');
 const defaultState: RouteState = {
     startId: '',
     endId: '',
+    startLocation: null,
+    endLocation: null,
+    waypoints: [],
     routeNodes: [],
     roadGeometry: null,
     optimalGeometry: null,
@@ -221,6 +233,30 @@ export const RouteProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     const setStartId = (id: string) => setState(prev => ({ ...prev, startId: id }));
     const setEndId = (id: string) => setState(prev => ({ ...prev, endId: id }));
+    const setStartLocation = (loc: RouteNode | null) => setState(prev => ({ ...prev, startLocation: loc, startId: loc?.id || '' }));
+    const setEndLocation = (loc: RouteNode | null) => setState(prev => ({ ...prev, endLocation: loc, endId: loc?.id || '' }));
+
+    const addWaypoint = (loc: RouteNode) => {
+        setState(prev => {
+            if (prev.waypoints.length >= 5) return prev;
+            return { ...prev, waypoints: [...prev.waypoints, loc] };
+        });
+    };
+    const removeWaypoint = (index: number) => {
+        setState(prev => ({
+            ...prev,
+            waypoints: prev.waypoints.filter((_, i) => i !== index)
+        }));
+    };
+    const reorderWaypoints = (from: number, to: number) => {
+        setState(prev => {
+            const wps = [...prev.waypoints];
+            const [moved] = wps.splice(from, 1);
+            wps.splice(to, 0, moved);
+            return { ...prev, waypoints: wps };
+        });
+    };
+    const clearWaypoints = () => setState(prev => ({ ...prev, waypoints: [] }));
     const setRouteNodes = (nodes: RouteNode[]) => setState(prev => ({ ...prev, routeNodes: nodes }));
     const setRoadGeometry = (geometry: RoadGeometry | null) =>
         setState(prev => ({ ...prev, roadGeometry: geometry }));
@@ -301,6 +337,12 @@ export const RouteProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             ...state,
             setStartId,
             setEndId,
+            setStartLocation,
+            setEndLocation,
+            addWaypoint,
+            removeWaypoint,
+            reorderWaypoints,
+            clearWaypoints,
             setRouteNodes,
             setRoadGeometry,
             setOptimalGeometry,
