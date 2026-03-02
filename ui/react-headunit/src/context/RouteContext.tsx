@@ -36,6 +36,14 @@ interface RouteState {
     simulation: SimulationState;
     isTracking: boolean;
     visualMode: 'normal' | 'nvg' | 'thermal' | 'mono' | 'amber';
+    isScope: boolean;
+    isGrid: boolean;
+    camSettings: {
+        brightness: number;
+        contrast: number;
+        grain: number;
+        vignette: number;
+    };
 }
 
 interface RouteContextType extends RouteState {
@@ -58,6 +66,9 @@ interface RouteContextType extends RouteState {
     setIsStartingNavigation: (isStarting: boolean) => void;
     setIsTracking: (isTracking: boolean) => void;
     setVisualMode: (mode: 'normal' | 'nvg' | 'thermal' | 'mono' | 'amber') => void;
+    setIsScope: (isScope: boolean) => void;
+    setIsGrid: (isGrid: boolean) => void;
+    setCamSettings: (settings: Partial<RouteState['camSettings']>) => void;
 }
 
 const STORAGE_KEY = 'navifly-route-state';
@@ -76,7 +87,15 @@ const defaultState: RouteState = {
     vehicle: defaultVehicle,
     simulation: defaultSimulationState,
     isTracking: false,
-    visualMode: 'normal'
+    visualMode: 'normal',
+    isScope: false,
+    isGrid: false,
+    camSettings: {
+        brightness: 1.0,
+        contrast: 1.0,
+        grain: 0.1,
+        vignette: 0.3
+    }
 };
 
 const RouteContext = createContext<RouteContextType | undefined>(undefined);
@@ -261,8 +280,19 @@ export const RouteProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     };
 
     const setIsTracking = (isTracking: boolean) => setState(prev => ({ ...prev, isTracking }));
-    const setVisualMode = (mode: 'normal' | 'nvg' | 'thermal' | 'mono' | 'amber') =>
+    const setVisualMode = (mode: RouteState['visualMode']) => {
         setState(prev => ({ ...prev, visualMode: mode }));
+    };
+
+    const setIsScope = (isScope: boolean) => setState(prev => ({ ...prev, isScope }));
+    const setIsGrid = (isGrid: boolean) => setState(prev => ({ ...prev, isGrid }));
+
+    const setCamSettings = (settings: Partial<RouteState['camSettings']>) => {
+        setState(prev => ({
+            ...prev,
+            camSettings: { ...prev.camSettings, ...settings }
+        }));
+    };
 
     return (
         <RouteContext.Provider value={{
@@ -285,7 +315,10 @@ export const RouteProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             isStartingNavigation,
             setIsStartingNavigation,
             setIsTracking,
-            setVisualMode
+            setVisualMode,
+            setIsScope,
+            setIsGrid,
+            setCamSettings
         }}>
             {children}
         </RouteContext.Provider>

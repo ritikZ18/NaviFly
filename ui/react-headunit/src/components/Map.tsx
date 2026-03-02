@@ -27,7 +27,7 @@ const Map: React.FC = () => {
     const {
         startId, endId, roadGeometry, alternativeRoutes, selectedRouteIndex,
         isNavigating, simulation, vehicle, selectRoute, setRoadGeometry, setOptimalGeometry, setAlternativeRoutes,
-        isStartingNavigation, isTracking
+        isStartingNavigation, isTracking, isScope
     } = useRoute();
 
     const hasFetchedLocations = useRef(false);
@@ -429,12 +429,23 @@ const Map: React.FC = () => {
     useEffect(() => {
         if (!map.current || !mapLoaded || !isTracking || !simulation.currentPosition || !simulation.isRunning) return;
 
-        map.current.easeTo({
-            center: simulation.currentPosition,
-            duration: 800,
-            essential: true
-        });
-    }, [simulation.currentPosition, isTracking, mapLoaded, simulation.isRunning]);
+        if (isScope) {
+            // Perfect Centering: zero duration for scope/ops mode
+            map.current.jumpTo({
+                center: simulation.currentPosition
+            });
+        } else {
+            // Adaptive easing: faster updates at higher simulation speeds to prevent lag
+            const speedFactor = simulation.speedMultiplier || 1;
+            const duration = Math.max(150, Math.min(800, 1000 / Math.sqrt(speedFactor)));
+
+            map.current.easeTo({
+                center: simulation.currentPosition,
+                duration: duration,
+                essential: true
+            });
+        }
+    }, [simulation.currentPosition, isTracking, mapLoaded, simulation.isRunning, simulation.speedMultiplier, isScope]);
 
     // Break point markers - red dots with duration tooltip
     const breakMarkersRef = useRef<maplibregl.Marker[]>([]);
@@ -470,7 +481,7 @@ const Map: React.FC = () => {
     }, [simulation.breakPoints, simulation.isRunning, mapLoaded]);
 
     return (
-        <div className="map-wrapper">
+        <div className="map-view-root">
             <div ref={mapContainer} className="map-container" />
             <div className="map-overlay">
                 <div className="map-legend">

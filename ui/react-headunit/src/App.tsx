@@ -7,15 +7,19 @@ import './index.css'
 function HeadUnit() {
   const [currentTime, setCurrentTime] = useState(new Date())
   const [isFullscreen, setIsFullscreen] = useState(false)
-  const [isScope, setIsScope] = useState(false)
-  const [isGrid, setIsGrid] = useState(false)
   const [isOpsMenuOpen, setIsOpsMenuOpen] = useState(false)
 
   const {
     isTracking,
     visualMode,
+    isScope,
+    isGrid,
+    camSettings,
     setIsTracking,
-    setVisualMode
+    setVisualMode,
+    setIsScope,
+    setIsGrid,
+    setCamSettings
   } = useRoute();
 
   useEffect(() => {
@@ -35,10 +39,21 @@ function HeadUnit() {
   const toggleScope = () => setIsScope(!isScope)
   const toggleGrid = () => setIsGrid(!isGrid)
 
+  const isCamOn = visualMode !== 'normal';
+
   return (
     <div className={`head-unit-container ${isFullscreen ? 'fullscreen' : ''}`}>
       <NavigationPanel />
-      <div className={`map-wrapper ${isScope ? 'ops-scope' : ''} ${isGrid ? 'ops-grid' : ''} vis-${visualMode}`} style={{ position: 'relative' }}>
+      <div
+        className={`map-wrapper ${isScope ? 'ops-scope' : ''} ${isGrid ? 'ops-grid' : ''} vis-${visualMode} ${isCamOn ? 'cam-on' : ''}`}
+        style={{
+          position: 'relative',
+          '--cam-brightness': camSettings.brightness,
+          '--cam-contrast': camSettings.contrast,
+          '--cam-grain': camSettings.grain,
+          '--cam-vignette': camSettings.vignette
+        } as React.CSSProperties}
+      >
         <Map />
 
         {/* Map HUD Controls */}
@@ -50,20 +65,75 @@ function HeadUnit() {
             <button className={`hud-btn ${isOpsMenuOpen ? 'active' : ''}`} title="Ops Options" onClick={() => setIsOpsMenuOpen(!isOpsMenuOpen)}>⚙</button>
 
             <div className={`hud-pop ${isOpsMenuOpen ? 'open' : ''}`}>
+              <div className="hud-header">OPERATIONS CENTER</div>
+
               <div className="hud-row">
                 <span>Track Vehicle</span>
                 <input type="checkbox" checked={isTracking} onChange={(e) => setIsTracking(e.target.checked)} />
               </div>
+
               <div className="hud-row">
-                <span>Visual</span>
+                <span>Visual Mode</span>
                 <select value={visualMode} onChange={(e) => setVisualMode(e.target.value as 'normal' | 'nvg' | 'thermal' | 'mono' | 'amber')}>
                   <option value="normal">Normal</option>
                   <option value="nvg">NVG Green</option>
-                  <option value="thermal">Thermal</option>
-                  <option value="mono">Mono</option>
-                  <option value="amber">Amber</option>
+                  <option value="thermal">Thermal IR</option>
+                  <option value="mono">Mono B/W</option>
+                  <option value="amber">Amber High-Contrast</option>
                 </select>
               </div>
+
+              {isCamOn && (
+                <div className="hud-settings-group">
+                  <div className="hud-row-slider">
+                    <div className="slider-label">
+                      <span>Brightness</span>
+                      <span>{camSettings.brightness.toFixed(1)}x</span>
+                    </div>
+                    <input
+                      type="range" min="0.5" max="2.0" step="0.1"
+                      value={camSettings.brightness}
+                      onChange={(e) => setCamSettings({ brightness: parseFloat(e.target.value) })}
+                    />
+                  </div>
+
+                  <div className="hud-row-slider">
+                    <div className="slider-label">
+                      <span>Contrast</span>
+                      <span>{camSettings.contrast.toFixed(1)}x</span>
+                    </div>
+                    <input
+                      type="range" min="0.5" max="2.5" step="0.1"
+                      value={camSettings.contrast}
+                      onChange={(e) => setCamSettings({ contrast: parseFloat(e.target.value) })}
+                    />
+                  </div>
+
+                  <div className="hud-row-slider">
+                    <div className="slider-label">
+                      <span>Grain</span>
+                      <span>{(camSettings.grain * 100).toFixed(0)}%</span>
+                    </div>
+                    <input
+                      type="range" min="0" max="1" step="0.05"
+                      value={camSettings.grain}
+                      onChange={(e) => setCamSettings({ grain: parseFloat(e.target.value) })}
+                    />
+                  </div>
+
+                  <div className="hud-row-slider">
+                    <div className="slider-label">
+                      <span>Vignette</span>
+                      <span>{(camSettings.vignette * 100).toFixed(0)}%</span>
+                    </div>
+                    <input
+                      type="range" min="0" max="1" step="0.05"
+                      value={camSettings.vignette}
+                      onChange={(e) => setCamSettings({ vignette: parseFloat(e.target.value) })}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
