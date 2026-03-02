@@ -136,7 +136,19 @@ function HeadUnit() {
                     <input
                       type="range" min="0" max="1" step="0.05"
                       value={camSettings.vignette}
-                      onChange={(e) => setCamSettings({ ...camSettings, vignette: parseFloat(e.target.value) })}
+                      onChange={(e) => setCamSettings({ vignette: parseFloat(e.target.value) })}
+                    />
+                  </div>
+
+                  <div className="hud-row-slider">
+                    <div className="slider-label">
+                      <span>Tracking Zoom</span>
+                      <span>{camSettings.zoom.toFixed(1)}x</span>
+                    </div>
+                    <input
+                      type="range" min="8" max="18" step="0.5"
+                      value={camSettings.zoom}
+                      onChange={(e) => setCamSettings({ zoom: parseFloat(e.target.value) })}
                     />
                   </div>
                 </div>
@@ -161,6 +173,22 @@ function HeadUnit() {
           <div className="time">{formatTime(currentTime)}</div>
         </div>
       </div>
+
+      {/* Advanced Tactical Filters */}
+      <svg style={{ position: 'absolute', width: 0, height: 0 }}>
+        <filter id="thermal-filter">
+          <feColorMatrix type="matrix" values="
+            0.5 0.5 0.5 0 0
+            1 0 0 0 0
+            0 0 1 0 0
+            0 0 0 1 0" />
+          <feComponentTransfer>
+            <feFuncR type="table" tableValues="0 0.1 0.4 1 1" />
+            <feFuncG type="table" tableValues="0 0 0.2 0.8 1" />
+            <feFuncB type="table" tableValues="0.4 0.6 0.2 0 0.2" />
+          </feComponentTransfer>
+        </filter>
+      </svg>
     </div>
   )
 }

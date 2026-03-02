@@ -31,10 +31,11 @@ const Map: React.FC<MapProps> = ({ onLoaded }) => {
     const {
         startId, endId, roadGeometry, alternativeRoutes, selectedRouteIndex,
         isNavigating, simulation, vehicle, selectRoute, setRoadGeometry, setOptimalGeometry, setAlternativeRoutes,
-        isStartingNavigation, isTracking, isScope
+        isStartingNavigation, isTracking, isScope, camSettings
     } = useRoute();
 
     const hasFetchedLocations = useRef(false);
+    const [locationsReady, setLocationsReady] = useState(false);
 
     // Fetch locations ONCE
     useEffect(() => {
@@ -46,12 +47,20 @@ const Map: React.FC<MapProps> = ({ onLoaded }) => {
                 const response = await fetch('http://localhost:8080/locations');
                 const data = await response.json();
                 setLocations(data);
+                setLocationsReady(true);
             } catch (error) {
                 console.error('Failed to fetch locations:', error);
             }
         };
         fetchLocations();
     }, []);
+
+    // Call onLoaded only when BOTH map and data are ready
+    useEffect(() => {
+        if (mapLoaded && locationsReady && onLoaded) {
+            onLoaded();
+        }
+    }, [mapLoaded, locationsReady, onLoaded]);
 
     // Initialize map - ONLY ONCE
     useEffect(() => {
@@ -90,7 +99,6 @@ const Map: React.FC<MapProps> = ({ onLoaded }) => {
 
         map.current.on('load', () => {
             setMapLoaded(true);
-            if (onLoaded) onLoaded();
             // Initialize empty route sources
             if (map.current) {
                 map.current.addSource('route-main', {
@@ -437,7 +445,8 @@ const Map: React.FC<MapProps> = ({ onLoaded }) => {
         if (isScope) {
             // Perfect Centering: zero duration for scope/ops mode
             map.current.jumpTo({
-                center: simulation.currentPosition
+                center: simulation.currentPosition,
+                zoom: camSettings.zoom // Use user-defined zoom
             });
         } else {
             // Adaptive easing: faster updates at higher simulation speeds to prevent lag
@@ -450,7 +459,7 @@ const Map: React.FC<MapProps> = ({ onLoaded }) => {
                 essential: true
             });
         }
-    }, [simulation.currentPosition, isTracking, mapLoaded, simulation.isRunning, simulation.speedMultiplier, isScope]);
+    }, [simulation.currentPosition, isTracking, mapLoaded, simulation.isRunning, simulation.speedMultiplier, isScope, camSettings.zoom]);
 
     // Break point markers - red dots with duration tooltip
     const breakMarkersRef = useRef<maplibregl.Marker[]>([]);

@@ -43,6 +43,7 @@ interface RouteState {
         contrast: number;
         grain: number;
         vignette: number;
+        zoom: number;
     };
 }
 
@@ -94,7 +95,8 @@ const defaultState: RouteState = {
         brightness: 1.0,
         contrast: 1.0,
         grain: 0.1,
-        vignette: 0.3
+        vignette: 0.3,
+        zoom: 12.0
     }
 };
 
