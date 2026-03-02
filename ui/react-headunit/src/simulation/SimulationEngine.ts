@@ -73,6 +73,9 @@ export class SimulationEngine {
      * Start simulation
      */
     start(config: SimulationConfig, initialState?: Partial<SimulationState>): void {
+        // Stop any existing simulation first
+        this.stop();
+
         this.config = config;
         this.totalDistance = this.calculateTotalDistance(config.route);
         this.lastTimestamp = performance.now();
@@ -149,6 +152,7 @@ export class SimulationEngine {
         this.state.progress = Math.min(100, (this.coveredDistance / this.totalDistance) * 100);
         this.state.distanceRemaining = Math.max(0, this.totalDistance - this.coveredDistance);
         this.state.currentSpeed = vehicle.avgSpeed * speedMultiplier;
+        this.state.speedMultiplier = speedMultiplier; // Ensure multiplier is in state
         this.state.eta = (this.state.distanceRemaining / vehicle.avgSpeed) * 60;
 
         // Random break check (every ~10km of simulated distance)

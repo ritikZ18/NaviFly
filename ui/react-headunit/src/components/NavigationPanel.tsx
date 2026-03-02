@@ -36,13 +36,11 @@ const NavigationPanel: React.FC = () => {
         if (simulation.speedMultiplier && simulation.speedMultiplier !== speedMultiplier) {
             setSpeedMultiplier(simulation.speedMultiplier);
         }
-    }, [simulation.speedMultiplier]);
+    }, [simulation.speedMultiplier, speedMultiplier]);
 
     // Fetch locations ONCE
     useEffect(() => {
         if (hasFetched.current) return;
-        // ... (rest is same)
-
         hasFetched.current = true;
 
         const fetchLocations = async () => {
@@ -54,8 +52,6 @@ const NavigationPanel: React.FC = () => {
                 const data = await response.json();
                 data.sort((a: Location, b: Location) => a.name.localeCompare(b.name));
                 setLocations(data);
-
-                // Do NOT set defaults - let user select (or load from localStorage)
             } catch (err) {
                 setError('Unable to load locations');
                 console.error(err);
@@ -64,8 +60,7 @@ const NavigationPanel: React.FC = () => {
             }
         };
         fetchLocations();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []); // Empty deps - run once
+    }, []);
 
     const handleVehicleSelect = (type: VehicleType) => {
         setVehicle(VehicleFactory.create(type));
@@ -136,8 +131,8 @@ const NavigationPanel: React.FC = () => {
     return (
         <div className={`navigation-panel ${settings.darkMode ? 'dark' : 'light'}`}>
             <div className="brand">
-                <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 800, color: '#007bff' }}>NaviFly</h1>
-                <p style={{ opacity: 0.6, fontSize: '0.8rem' }}>FLEET COMMAND • ARIZONA</p>
+                <h1>NaviFly</h1>
+                <p>FLEET COMMAND • ARIZONA</p>
             </div>
 
             {/* Location Selection */}

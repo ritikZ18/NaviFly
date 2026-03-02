@@ -20,8 +20,8 @@ interface AlternativeRoute {
 
 export type RoadGeometry =
     | [number, number][]
-    | { type: 'Feature', geometry: { type: 'LineString', coordinates: [number, number][] }, properties: any }
-    | { type: 'FeatureCollection', features: any[] };
+    | { type: 'Feature', geometry: { type: 'LineString', coordinates: [number, number][] }, properties: Record<string, unknown> }
+    | { type: 'FeatureCollection', features: Record<string, unknown>[] };
 
 interface RouteState {
     startId: string;
@@ -34,6 +34,17 @@ interface RouteState {
     isNavigating: boolean;
     vehicle: Vehicle;
     simulation: SimulationState;
+    isTracking: boolean;
+    visualMode: 'normal' | 'nvg' | 'thermal' | 'mono' | 'amber';
+    isScope: boolean;
+    isGrid: boolean;
+    camSettings: {
+        brightness: number;
+        contrast: number;
+        grain: number;
+        vignette: number;
+        zoom: number;
+    };
 }
 
 interface RouteContextType extends RouteState {
@@ -54,6 +65,11 @@ interface RouteContextType extends RouteState {
     clearNavigation: () => void;
     isStartingNavigation: boolean;
     setIsStartingNavigation: (isStarting: boolean) => void;
+    setIsTracking: (isTracking: boolean) => void;
+    setVisualMode: (mode: 'normal' | 'nvg' | 'thermal' | 'mono' | 'amber') => void;
+    setIsScope: (isScope: boolean) => void;
+    setIsGrid: (isGrid: boolean) => void;
+    setCamSettings: (settings: Partial<RouteState['camSettings']>) => void;
 }
 
 const STORAGE_KEY = 'navifly-route-state';
@@ -70,7 +86,18 @@ const defaultState: RouteState = {
     selectedRouteIndex: 0,
     isNavigating: false,
     vehicle: defaultVehicle,
-    simulation: defaultSimulationState
+    simulation: defaultSimulationState,
+    isTracking: false,
+    visualMode: 'normal',
+    isScope: false,
+    isGrid: false,
+    camSettings: {
+        brightness: 1.0,
+        contrast: 1.0,
+        grain: 0.1,
+        vignette: 0.3,
+        zoom: 12.0
+    }
 };
 
 const RouteContext = createContext<RouteContextType | undefined>(undefined);
@@ -129,9 +156,9 @@ export const RouteProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             if (Array.isArray(geom)) {
                 coords = geom;
             } else if (geom.type === 'FeatureCollection') {
-                coords = geom.features.flatMap((f: any) => f.geometry.coordinates);
+                coords = (geom.features as { geometry: { coordinates: [number, number][] } }[]).flatMap(f => f.geometry.coordinates);
             } else if (geom.type === 'Feature') {
-                coords = geom.geometry.coordinates;
+                coords = (geom as { geometry: { coordinates: [number, number][] } }).geometry.coordinates;
             }
 
             if (coords.length > 0) {
@@ -139,6 +166,42 @@ export const RouteProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             }
         }
     }, [state.roadGeometry]);
+
+    const startSimulation = (initialState?: Partial<SimulationState>) => {
+        let route: [number, number][] = [];
+        const geom = state.roadGeometry;
+
+        if (Array.isArray(geom)) {
+            route = geom;
+        } else if (geom && geom.type === 'FeatureCollection') {
+            route = (geom.features as { geometry: { coordinates: [number, number][] } }[]).flatMap(f => f.geometry.coordinates);
+        } else if (geom && geom.type === 'Feature') {
+            route = (geom as { geometry: { coordinates: [number, number][] } }).geometry.coordinates;
+        }
+
+        if (!route || !Array.isArray(route) || route.length < 2) {
+            console.error('Invalid route for simulation:', route);
+            return;
+        }
+
+        simulationRef.current?.start({
+            route,
+            vehicle: state.vehicle,
+            speedMultiplier: initialState?.speedMultiplier || 50, // Default to 50x
+            onUpdate: (simState) => {
+                setState(prev => ({ ...prev, simulation: simState }));
+            },
+            onComplete: () => {
+                setState(prev => ({
+                    ...prev,
+                    simulation: { ...prev.simulation, isRunning: false }
+                }));
+            },
+            onBreak: (duration) => {
+                console.log(`Vehicle taking a ${duration} minute break`);
+            }
+        }, initialState);
+    };
 
     // Initialize simulation engine and auto-resume if needed
     useEffect(() => {
@@ -153,6 +216,7 @@ export const RouteProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         return () => {
             simulationRef.current?.stop();
         };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []); // Run once on mount
 
     const setStartId = (id: string) => setState(prev => ({ ...prev, startId: id }));
@@ -190,41 +254,6 @@ export const RouteProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     const setVehicle = (vehicle: Vehicle) => setState(prev => ({ ...prev, vehicle }));
 
-    const startSimulation = (initialState?: Partial<SimulationState>) => {
-        let route: [number, number][] = [];
-        const geom = state.roadGeometry;
-
-        if (Array.isArray(geom)) {
-            route = geom;
-        } else if (geom && geom.type === 'FeatureCollection') {
-            route = geom.features.flatMap((f: any) => f.geometry.coordinates);
-        } else if (geom && geom.type === 'Feature') {
-            route = geom.geometry.coordinates;
-        }
-
-        if (!route || !Array.isArray(route) || route.length < 2) {
-            console.error('Invalid route for simulation:', route);
-            return;
-        }
-
-        simulationRef.current?.start({
-            route,
-            vehicle: state.vehicle,
-            speedMultiplier: initialState?.speedMultiplier || 50, // Default to 50x
-            onUpdate: (simState) => {
-                setState(prev => ({ ...prev, simulation: simState }));
-            },
-            onComplete: () => {
-                setState(prev => ({
-                    ...prev,
-                    simulation: { ...prev.simulation, isRunning: false }
-                }));
-            },
-            onBreak: (duration) => {
-                console.log(`Vehicle taking a ${duration} minute break`);
-            }
-        }, initialState);
-    };
 
     const pauseSimulation = () => simulationRef.current?.pause();
     const resumeSimulation = () => simulationRef.current?.resume();
@@ -246,7 +275,24 @@ export const RouteProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             alternativeRoutes: [],
             selectedRouteIndex: 0,
             isNavigating: false,
-            simulation: defaultSimulationState
+            simulation: defaultSimulationState,
+            isTracking: false,
+            visualMode: 'normal'
+        }));
+    };
+
+    const setIsTracking = (isTracking: boolean) => setState(prev => ({ ...prev, isTracking }));
+    const setVisualMode = (mode: RouteState['visualMode']) => {
+        setState(prev => ({ ...prev, visualMode: mode }));
+    };
+
+    const setIsScope = (isScope: boolean) => setState(prev => ({ ...prev, isScope }));
+    const setIsGrid = (isGrid: boolean) => setState(prev => ({ ...prev, isGrid }));
+
+    const setCamSettings = (settings: Partial<RouteState['camSettings']>) => {
+        setState(prev => ({
+            ...prev,
+            camSettings: { ...prev.camSettings, ...settings }
         }));
     };
 
@@ -269,7 +315,12 @@ export const RouteProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             setSpeedMultiplier,
             clearNavigation,
             isStartingNavigation,
-            setIsStartingNavigation
+            setIsStartingNavigation,
+            setIsTracking,
+            setVisualMode,
+            setIsScope,
+            setIsGrid,
+            setCamSettings
         }}>
             {children}
         </RouteContext.Provider>
