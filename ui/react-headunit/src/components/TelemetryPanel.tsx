@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { Activity, Clock, Ruler, Zap, Wind, Pin, CircleDot, Trash2, List, BarChart3, X } from 'lucide-react';
 import { useTelemetry } from '../context/TelemetryContext';
 import type { TelemetrySession } from '../context/TelemetryContext';
 
@@ -141,13 +142,13 @@ const LiveSpeedTab: React.FC = () => {
                         </span>
                     </div>
                 ) : (
-                    <p className="telem-hint">Enable 📡 Traffic Live to track fleet speed.</p>
+                    <p className="telem-hint">Enable Satellite Traffic Live to track fleet speed.</p>
                 )}
             </div>
 
             {/* TomTom density → speed mapping legend */}
             <div className="telem-chart-card telem-density-legend">
-                <div className="telem-chart-header"><span>🚦 TomTom Density → Speed Reference</span></div>
+                <div className="telem-chart-header"><span>TomTom Density → Speed Reference</span></div>
                 <div className="telem-density-grid">
                     <div className="telem-density-row"><span className="dot green" />Light traffic<span>~80 km/h</span></div>
                     <div className="telem-density-row"><span className="dot amber" />Moderate traffic<span>~50 km/h</span></div>
@@ -176,10 +177,12 @@ const SessionCard: React.FC<{ session: TelemetrySession }> = ({ session: s }) =>
                 <span className="telem-session-time">{fmtTime(s.startTime)}</span>
             </div>
             <div className="telem-session-stats">
-                <span title="Duration">⏱ {fmtDuration(durationMin)}</span>
-                <span title="Distance">📏 {s.distanceKm.toFixed(1)} km</span>
-                <span title="Avg Speed" style={{ color: speedColor(s.avgSpeed) }}>💨 {s.avgSpeed} km/h avg</span>
-                <span title="Max Speed">⚡ {s.maxSpeed} km/h max</span>
+                <span title="Duration"><Clock size={12} style={{ marginRight: '4px' }} /> {fmtDuration(durationMin)}</span>
+                <span title="Distance"><Ruler size={12} style={{ marginRight: '4px' }} /> {s.distanceKm.toFixed(1)} km</span>
+                <span title="Avg Speed" style={{ color: speedColor(s.avgSpeed) }}>
+                    <Wind size={12} style={{ marginRight: '4px' }} /> {s.avgSpeed} km/h avg
+                </span>
+                <span title="Max Speed"><Zap size={12} style={{ marginRight: '4px' }} /> {s.maxSpeed} km/h max</span>
             </div>
 
             {expanded && (
@@ -195,7 +198,10 @@ const SessionCard: React.FC<{ session: TelemetrySession }> = ({ session: s }) =>
                     {/* Breaks */}
                     {s.breaks.length > 0 && (
                         <div className="telem-detail-section">
-                            <span className="telem-detail-title">🛑 Breaks ({s.breaks.length})</span>
+                            <span className="telem-detail-title">
+                                <CircleDot size={12} style={{ marginRight: '6px' }} color="#ef4444" />
+                                Breaks ({s.breaks.length})
+                            </span>
                             {s.breaks.map((b, i) => (
                                 <div key={i} className="telem-detail-row">
                                     {fmtTime(b.at)} — {b.durationMin} min
@@ -207,7 +213,7 @@ const SessionCard: React.FC<{ session: TelemetrySession }> = ({ session: s }) =>
                     {/* Waypoints */}
                     {s.waypoints.length > 0 && (
                         <div className="telem-detail-section">
-                            <span className="telem-detail-title">📍 Waypoints</span>
+                            <span className="telem-detail-title"><Pin size={12} style={{ marginRight: '6px' }} /> Waypoints</span>
                             {s.waypoints.map((w, i) => (
                                 <div key={i} className="telem-detail-row">↳ {w}</div>
                             ))}
@@ -264,7 +270,7 @@ const SessionLogTab: React.FC = () => {
                 ))}
                 {sessions.length > 0 && (
                     <button className="telem-bucket-btn telem-clear-btn" onClick={clearSessions} title="Clear all sessions">
-                        🗑
+                        <Trash2 size={14} />
                     </button>
                 )}
             </div>
@@ -301,7 +307,7 @@ const TelemetryPanel: React.FC = () => {
                 onClick={() => setIsTelemetryOpen(!isTelemetryOpen)}
                 title="Open Telemetry Dashboard"
             >
-                📊
+                <Activity size={20} />
                 {sessions.length > 0 && !isTelemetryOpen && (
                     <span className="telem-badge-count">{sessions.length}</span>
                 )}
@@ -311,8 +317,8 @@ const TelemetryPanel: React.FC = () => {
             {/* Slide-in panel */}
             <div className={`telem-panel ${isTelemetryOpen ? 'open' : ''}`}>
                 <div className="telem-panel-header">
-                    <span className="telem-panel-title">📊 NaviFly Telemetry</span>
-                    <button className="telem-close-btn" onClick={() => setIsTelemetryOpen(false)}>✕</button>
+                    <span className="telem-panel-title"><Activity size={16} style={{ marginRight: '8px' }} /> NaviFly Telemetry</span>
+                    <button className="telem-close-btn" onClick={() => setIsTelemetryOpen(false)}><X size={18} /></button>
                 </div>
 
                 {/* Tabs */}
@@ -321,13 +327,13 @@ const TelemetryPanel: React.FC = () => {
                         className={`telem-tab ${activeTab === 'log' ? 'active' : ''}`}
                         onClick={() => setActiveTab('log')}
                     >
-                        📋 Session Log
+                        <List size={14} style={{ marginRight: '6px' }} /> Session Log
                     </button>
                     <button
                         className={`telem-tab ${activeTab === 'live' ? 'active' : ''}`}
                         onClick={() => setActiveTab('live')}
                     >
-                        📈 Live Speed
+                        <BarChart3 size={14} style={{ marginRight: '6px' }} /> Live Speed
                     </button>
                 </div>
 

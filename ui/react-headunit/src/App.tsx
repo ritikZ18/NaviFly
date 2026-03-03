@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback } from 'react'
-import Map from './components/Map'
+import MapView from './components/MapView'
 import NavigationPanel from './components/NavigationPanel'
 import Preloader from './components/Preloader'
 import TelemetryPanel from './components/TelemetryPanel'
 import Toast, { useToastManager } from './components/Toast'
+import AircraftControlHUD from './components/AircraftControlHUD'
 import { RouteProvider, useRoute } from './context/RouteContext'
 import { TelemetryProvider } from './context/TelemetryContext'
+import { Maximize, Target, Grid3X3, Settings } from 'lucide-react'
 import './index.css'
 
 function HeadUnit() {
@@ -25,7 +27,8 @@ function HeadUnit() {
     setVisualMode,
     setIsScope,
     setIsGrid,
-    setCamSettings
+    setCamSettings,
+    isTrafficVisible
   } = useRoute();
 
   useEffect(() => {
@@ -34,11 +37,18 @@ function HeadUnit() {
   }, [])
 
   const formatTime = (date: Date) => {
-    return date.toLocaleTimeString('en-US', {
+    const timeStr = date.toLocaleTimeString('en-US', {
       hour: '2-digit',
       minute: '2-digit',
       hour12: true
-    })
+    });
+    const parts = timeStr.split(':');
+    if (parts.length < 2) return timeStr;
+    return (
+      <>
+        {parts[0]}<span className="time-colon-blink">:</span>{parts[1]}
+      </>
+    );
   }
 
   const toggleFullscreen = () => setIsFullscreen(!isFullscreen)
@@ -65,15 +75,15 @@ function HeadUnit() {
           '--cam-vignette': camSettings.vignette
         } as React.CSSProperties}
       >
-        <Map onLoaded={handleMapLoaded} />
+        <MapView onLoaded={handleMapLoaded} />
 
         {/* Map HUD Controls */}
         <div className="map-hud">
           <div className="hud-cluster">
-            <button className={`hud-btn ${isFullscreen ? 'active' : ''}`} title="Fullscreen" onClick={toggleFullscreen}>⛶</button>
-            <button className={`hud-btn ${isScope ? 'active' : ''}`} title="Scope Mode" onClick={toggleScope}>◎</button>
-            <button className={`hud-btn ${isGrid ? 'active' : ''}`} title="Grid" onClick={toggleGrid}>⌗</button>
-            <button className={`hud-btn ${isOpsMenuOpen ? 'active' : ''}`} title="Ops Options" onClick={() => setIsOpsMenuOpen(!isOpsMenuOpen)}>⚙</button>
+            <button className={`hud-btn ${isFullscreen ? 'active' : ''}`} title="Fullscreen" onClick={toggleFullscreen}><Maximize size={18} /></button>
+            <button className={`hud-btn ${isScope ? 'active' : ''}`} title="Scope Mode" onClick={toggleScope}><Target size={18} /></button>
+            <button className={`hud-btn ${isGrid ? 'active' : ''}`} title="Grid" onClick={toggleGrid}><Grid3X3 size={18} /></button>
+            <button className={`hud-btn ${isOpsMenuOpen ? 'active' : ''}`} title="Ops Options" onClick={() => setIsOpsMenuOpen(!isOpsMenuOpen)}><Settings size={18} /></button>
 
             <div className={`hud-pop ${isOpsMenuOpen ? 'open' : ''}`}>
               <div className="hud-header">OPERATIONS CENTER</div>
@@ -154,44 +164,55 @@ function HeadUnit() {
         </div>
 
         <div className="system-status">
-          <div className="gps">GPS: FIXED • Arizona</div>
+          <div className="status-segment-top">ARIZONA COMMAND</div>
           <div className="time">{formatTime(currentTime)}</div>
+          <div className="status-divider" />
+          <div className="gps">GPS: FIXED</div>
+          {isTrafficVisible && (
+            <div className="gps traffic-live">
+              <span className="live-blip" />
+              LIVE TRAFFIC
+            </div>
+          )}
         </div>
-      </div>
 
-      {/* Advanced Tactical Filters */}
-      <svg style={{ position: 'absolute', width: 0, height: 0 }}>
-        <filter id="thermal-filter">
-          <feColorMatrix type="matrix" values="
+        {/* Advanced Tactical Filters */}
+        <svg style={{ position: 'absolute', width: 0, height: 0 }}>
+          <filter id="thermal-filter">
+            <feColorMatrix type="matrix" values="
             0.5 0.5 0.5 0 0
             1 0 0 0 0
             0 0 1 0 0
             0 0 0 1 0" />
-          <feComponentTransfer>
-            <feFuncR type="table" tableValues="0 0.1 0.4 1 1" />
-            <feFuncG type="table" tableValues="0 0 0.2 0.8 1" />
-            <feFuncB type="table" tableValues="0.4 0.6 0.2 0 0.2" />
-          </feComponentTransfer>
-        </filter>
-      </svg>
+            <feComponentTransfer>
+              <feFuncR type="table" tableValues="0 0.1 0.4 1 1" />
+              <feFuncG type="table" tableValues="0 0 0.2 0.8 1" />
+              <feFuncB type="table" tableValues="0.4 0.6 0.2 0 0.2" />
+            </feComponentTransfer>
+          </filter>
+        </svg>
 
-      {/* Telemetry slide-in panel */}
-      <TelemetryPanel />
+        {/* Telemetry slide-in panel */}
+        <TelemetryPanel />
 
-      {/* Toast notifications */}
-      <Toast toasts={toasts} onDismiss={dismiss} />
+        {/* Floating Aircraft Tracking HUD */}
+        <AircraftControlHUD />
+
+        {/* Toast notifications */}
+        <Toast toasts={toasts} onDismiss={dismiss} />
+      </div>
     </div>
-  )
+  );
 }
 
 function App() {
   return (
-    <RouteProvider>
-      <TelemetryProvider>
+    <TelemetryProvider>
+      <RouteProvider>
         <HeadUnit />
-      </TelemetryProvider>
-    </RouteProvider>
-  )
+      </RouteProvider>
+    </TelemetryProvider>
+  );
 }
 
-export default App
+export default App;

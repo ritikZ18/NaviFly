@@ -51,7 +51,10 @@ interface RouteState {
     };
     isGlobeView: boolean;
     isTrafficVisible: boolean;
+    isAircraftVisible: boolean;
     trackedEntityId: string | null;
+    aircraftDisplayMode: 'icon' | 'name' | 'path' | 'full';
+    routingPreference: 'fastest' | 'scenic' | 'balanced';
 }
 
 interface RouteContextType extends RouteState {
@@ -85,7 +88,10 @@ interface RouteContextType extends RouteState {
     setCamSettings: (settings: Partial<RouteState['camSettings']>) => void;
     setIsGlobeView: (isGlobe: boolean) => void;
     setIsTrafficVisible: (isVisible: boolean) => void;
+    setIsAircraftVisible: (isVisible: boolean) => void;
     setTrackedEntityId: (id: string | null) => void;
+    setAircraftDisplayMode: (mode: 'icon' | 'name' | 'path' | 'full') => void;
+    setRoutingPreference: (pref: 'fastest' | 'scenic' | 'balanced') => void;
 }
 
 const STORAGE_KEY = 'navifly-route-state';
@@ -119,7 +125,10 @@ const defaultState: RouteState = {
     },
     isGlobeView: false,
     isTrafficVisible: false,
-    trackedEntityId: null
+    isAircraftVisible: true,
+    trackedEntityId: null,
+    aircraftDisplayMode: 'icon',
+    routingPreference: 'balanced'
 };
 
 const RouteContext = createContext<RouteContextType | undefined>(undefined);
@@ -226,7 +235,7 @@ export const RouteProvider: React.FC<{ children: ReactNode }> = ({ children }) =
                 setState(prev => ({ ...prev, simulation: simState }));
                 // Sample speed every ~5s (engine calls onUpdate ~10x/s, sample 1 in 50)
                 if (Math.random() < 0.02) {
-                    const speedKmh = Math.round((simState.currentSpeed ?? 0) * 3.6);
+                    const speedKmh = Math.round(simState.currentSpeed ?? 0);
                     recordSpeedSample(speedKmh);
                 }
             },
@@ -264,6 +273,8 @@ export const RouteProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const setEndId = (id: string) => setState(prev => ({ ...prev, endId: id }));
     const setStartLocation = (loc: RouteNode | null) => setState(prev => ({ ...prev, startLocation: loc, startId: loc?.id || '' }));
     const setEndLocation = (loc: RouteNode | null) => setState(prev => ({ ...prev, endLocation: loc, endId: loc?.id || '' }));
+    const setAircraftDisplayMode = (mode: 'icon' | 'name' | 'path' | 'full') => setState(prev => ({ ...prev, aircraftDisplayMode: mode }));
+    const setRoutingPreference = (pref: 'fastest' | 'scenic' | 'balanced') => setState(prev => ({ ...prev, routingPreference: pref }));
 
     const addWaypoint = (loc: RouteNode) => {
         setState(prev => {
@@ -392,8 +403,11 @@ export const RouteProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             setIsScope,
             setIsGrid,
             setCamSettings,
+            setAircraftDisplayMode,
+            setRoutingPreference,
             setIsGlobeView: (isGlobe: boolean) => setState(prev => ({ ...prev, isGlobeView: isGlobe })),
             setIsTrafficVisible: (isVisible: boolean) => setState(prev => ({ ...prev, isTrafficVisible: isVisible })),
+            setIsAircraftVisible: (isVisible: boolean) => setState(prev => ({ ...prev, isAircraftVisible: isVisible })),
             setTrackedEntityId: (id: string | null) => setState(prev => ({ ...prev, trackedEntityId: id }))
         }}>
             {children}

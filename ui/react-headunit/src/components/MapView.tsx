@@ -6,6 +6,7 @@ import type { RoadGeometry } from '../context/RouteContext';
 import { useTelemetry } from '../context/TelemetryContext';
 import { pushToast } from './Toast';
 import RouteLoader from './RouteLoader';
+import { Globe, Map as MapIcon, Satellite, Mountain } from 'lucide-react';
 
 // TomTom API key (free at developer.tomtom.com — set VITE_TOMTOM_API_KEY in .env)
 const TOMTOM_KEY = import.meta.env.VITE_TOMTOM_API_KEY as string | undefined;
@@ -21,7 +22,7 @@ interface MapProps {
     onLoaded?: () => void;
 }
 
-const Map: React.FC<MapProps> = ({ onLoaded }) => {
+const MapView: React.FC<MapProps> = ({ onLoaded }) => {
     const mapContainer = useRef<HTMLDivElement>(null);
     const map = useRef<maplibregl.Map | null>(null);
     const markersRef = useRef<maplibregl.Marker[]>([]);
@@ -45,7 +46,8 @@ const Map: React.FC<MapProps> = ({ onLoaded }) => {
         startId, endId, roadGeometry, alternativeRoutes, selectedRouteIndex,
         isNavigating, simulation, vehicle, selectRoute, setRoadGeometry, setOptimalGeometry, setAlternativeRoutes,
         isStartingNavigation, isTracking, isScope, camSettings, waypoints,
-        isGlobeView, isTrafficVisible, trackedEntityId, setIsGlobeView
+        isGlobeView, isTrafficVisible, isAircraftVisible, trackedEntityId, setIsGlobeView,
+        aircraftDisplayMode, setTrackedEntityId
     } = useRoute();
 
     const hasFetchedLocations = useRef(false);
@@ -59,11 +61,18 @@ const Map: React.FC<MapProps> = ({ onLoaded }) => {
         const fetchLocations = async () => {
             try {
                 const response = await fetch('http://localhost:8080/locations');
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 const data = await response.json();
                 setLocations(data);
                 setLocationsReady(true);
             } catch (error) {
                 console.error('Failed to fetch locations:', error);
+                // Fail gracefully so the app can still load (Preloader doesn't hang)
+                setLocationsReady(true);
+                pushToast({
+                    type: 'danger',
+                    message: 'System offline: Could not fetch routing locations. Map may be limited.'
+                });
             }
         };
         fetchLocations();
@@ -196,6 +205,26 @@ const Map: React.FC<MapProps> = ({ onLoaded }) => {
                     }
                 });
 
+                map.current.addLayer({
+                    id: 'aircraft-trail-labels',
+                    type: 'symbol',
+                    source: 'aircraft-trail',
+                    filter: ['has', 'label'],
+                    layout: {
+                        'text-field': ['get', 'label'],
+                        'text-font': ['Inter Bold', 'Open Sans Semibold', 'Arial Unicode MS Bold'],
+                        'text-size': 9,
+                        'text-offset': [0, 0.8],
+                        'text-anchor': 'top',
+                        'visibility': 'none'
+                    },
+                    paint: {
+                        'text-color': '#facc15',
+                        'text-halo-color': 'rgba(0,0,0,0.8)',
+                        'text-halo-width': 1
+                    }
+                });
+
                 // Add 3D Terrain source (AWS Terrain Tiles — free, no key required)
                 map.current.addSource('terrain-dem', {
                     type: 'raster-dem',
@@ -252,7 +281,16 @@ const Map: React.FC<MapProps> = ({ onLoaded }) => {
             }
         });
 
+        // Resize observer to handle container changes smoothly
+        const resizeObserver = new ResizeObserver(() => {
+            map.current?.resize();
+        });
+        if (mapContainer.current) {
+            resizeObserver.observe(mapContainer.current);
+        }
+
         return () => {
+            resizeObserver.disconnect();
             if (map.current) {
                 map.current.remove();
                 map.current = null;
@@ -397,13 +435,16 @@ const Map: React.FC<MapProps> = ({ onLoaded }) => {
     const fetchRouteRef = useRef(fetchRouteWithAlternatives);
     fetchRouteRef.current = fetchRouteWithAlternatives;
 
-    // Make the fetch function available globally through window for cross-component communication
+    // Make functions available globally through window for cross-component communication
     useEffect(() => {
-        (window as unknown as Record<string, unknown>).__naviflyFetchRoute = fetchRouteWithAlternatives;
+        const win = window as unknown as Record<string, unknown>;
+        win.__naviflyFetchRoute = fetchRouteWithAlternatives;
+        win.__naviflySetTrackedEntityId = setTrackedEntityId;
         return () => {
-            delete (window as unknown as Record<string, unknown>).__naviflyFetchRoute;
+            delete win.__naviflyFetchRoute;
+            delete win.__naviflySetTrackedEntityId;
         };
-    }, [fetchRouteWithAlternatives]);
+    }, [fetchRouteWithAlternatives, setTrackedEntityId]);
 
     // Waypoint markers (yellow numbered stops)
     const waypointMarkersRef = useRef<maplibregl.Marker[]>([]);
@@ -820,8 +861,8 @@ const Map: React.FC<MapProps> = ({ onLoaded }) => {
     useEffect(() => {
         if (!map.current || !mapLoaded) return;
 
-        // Clear markers when traffic turned off
-        if (!isTrafficVisible) {
+        // Clear markers when traffic or aircraft layer turned off
+        if (!isTrafficVisible || !isAircraftVisible) {
             aircraftMarkersRef.current.forEach(({ marker }) => marker.remove());
             aircraftMarkersRef.current.clear();
             const trailSrc = map.current.getSource('aircraft-trail') as maplibregl.GeoJSONSource;
@@ -829,11 +870,17 @@ const Map: React.FC<MapProps> = ({ onLoaded }) => {
             if (map.current.getLayer('aircraft-trail')) {
                 map.current.setLayoutProperty('aircraft-trail', 'visibility', 'none');
             }
+            if (map.current.getLayer('aircraft-trail-labels')) {
+                map.current.setLayoutProperty('aircraft-trail-labels', 'visibility', 'none');
+            }
             return;
         }
 
         if (map.current.getLayer('aircraft-trail')) {
             map.current.setLayoutProperty('aircraft-trail', 'visibility', 'visible');
+        }
+        if (map.current.getLayer('aircraft-trail-labels')) {
+            map.current.setLayoutProperty('aircraft-trail-labels', 'visibility', 'visible');
         }
 
         // Route bbox for traffic-in-route detection
@@ -841,15 +888,22 @@ const Map: React.FC<MapProps> = ({ onLoaded }) => {
         if (roadGeometry) {
             let coords: [number, number][] = [];
             if (Array.isArray(roadGeometry)) coords = roadGeometry;
-            else if (roadGeometry.type === 'Feature') coords = (roadGeometry as { geometry: { coordinates: [number, number][] } }).geometry.coordinates;
-            else if (roadGeometry.type === 'FeatureCollection') coords = (roadGeometry.features as { geometry: { coordinates: [number, number][] } }[]).flatMap(f => f.geometry.coordinates);
-            if (coords.length) {
-                const lons = coords.map(c => c[0]);
-                const lats = coords.map(c => c[1]);
-                routeBbox = [
-                    Math.min(...lons) - 0.05, Math.min(...lats) - 0.05,
-                    Math.max(...lons) + 0.05, Math.max(...lats) + 0.05
-                ];
+            else if (roadGeometry && typeof roadGeometry === 'object' && 'type' in roadGeometry) {
+                if (roadGeometry.type === 'Feature') coords = (roadGeometry as any).geometry.coordinates;
+                else if (roadGeometry.type === 'FeatureCollection') coords = (roadGeometry as any).features.flatMap((f: any) => f.geometry.coordinates);
+            }
+
+            if (coords && coords.length > 0) {
+                let minLon = coords[0][0], maxLon = coords[0][0];
+                let minLat = coords[0][1], maxLat = coords[0][1];
+                for (let i = 1; i < coords.length; i++) {
+                    const [lon, lat] = coords[i];
+                    if (lon < minLon) minLon = lon;
+                    if (lon > maxLon) maxLon = lon;
+                    if (lat < minLat) minLat = lat;
+                    if (lat > maxLat) maxLat = lat;
+                }
+                routeBbox = [minLon - 0.05, minLat - 0.05, maxLon + 0.05, maxLat + 0.05];
             }
         }
 
@@ -891,7 +945,7 @@ const Map: React.FC<MapProps> = ({ onLoaded }) => {
                         routeToastFired = true;
                         pushToast({
                             type: 'warning',
-                            icon: '✈️',
+                            icon: 'PLANE', // Use a keyword or simple string if icons are handled by Toast
                             message: `Air traffic near route: ${callsign} at ${altitude ? Math.round(altitude) + 'm' : 'unknown alt'}`,
                             durationMs: 7000,
                         });
@@ -899,15 +953,41 @@ const Map: React.FC<MapProps> = ({ onLoaded }) => {
 
                     // Build or update marker
                     const existing = aircraftMarkersRef.current.get(icao24);
-                    const trail: [number, number][] = existing
-                        ? [...existing.trail.slice(-19), [lon, lat]]
-                        : [[lon, lat]];
+                    let trail: [number, number][] = existing ? existing.trail : [[lon, lat]];
+
+                    // If tracked, keep full history; otherwise keep 20 samples
+                    if (isTracked) {
+                        // Only add if position changed significantly to avoid duplicates
+                        const lastPos = trail[trail.length - 1];
+                        if (!lastPos || Math.abs(lastPos[0] - lon) > 0.0001 || Math.abs(lastPos[1] - lat) > 0.0001) {
+                            trail = [...trail, [lon, lat]];
+                        }
+                    } else {
+                        trail = [...trail.slice(-19), [lon, lat]];
+                    }
+
+                    const showName = aircraftDisplayMode === 'name' || aircraftDisplayMode === 'full';
+                    const showTrail = aircraftDisplayMode === 'path' || aircraftDisplayMode === 'full';
 
                     if (existing) {
                         // Update position + heading rotation
                         existing.marker.setLngLat([lon, lat]);
                         const el = existing.marker.getElement();
                         el.style.transform = `rotate(${heading}deg)`;
+
+                        // Update Label visibility
+                        let label = el.querySelector('.aircraft-label');
+                        if (showName) {
+                            if (!label) {
+                                label = document.createElement('div');
+                                label.className = 'aircraft-label';
+                                el.appendChild(label);
+                            }
+                            label.textContent = callsign;
+                        } else if (label) {
+                            label.remove();
+                        }
+
                         if (isTracked) {
                             el.classList.add('aircraft-tracked');
                             map.current?.easeTo({ center: [lon, lat], duration: 1000 });
@@ -922,8 +1002,23 @@ const Map: React.FC<MapProps> = ({ onLoaded }) => {
                         el.style.transform = `rotate(${heading}deg)`;
                         el.title = `${callsign} | Alt: ${altitude ? Math.round(altitude) + 'm' : '?'} | ${velocity ? Math.round(velocity * 3.6) + ' km/h' : '?'}`;
 
+                        // Inject minimalist plane SVG
+                        el.innerHTML = `
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/>
+                            </svg>
+                        `;
+
+                        if (showName) {
+                            const label = document.createElement('div');
+                            label.className = 'aircraft-label';
+                            label.textContent = callsign;
+                            el.appendChild(label);
+                        }
+
                         // Click → track this aircraft
                         el.addEventListener('click', () => {
+                            (window as any).__naviflySetTrackedEntityId?.(icao24);
                             pushToast({
                                 type: 'info',
                                 icon: '✈️',
@@ -933,16 +1028,19 @@ const Map: React.FC<MapProps> = ({ onLoaded }) => {
                         });
 
                         // Popup on hover
-                        const popup = new maplibregl.Popup({ offset: 18, closeButton: false, closeOnClick: false })
+                        const popup = new maplibregl.Popup({ offset: 18, closeButton: true, closeOnClick: false })
                             .setHTML(`
-                                <div class="aircraft-popup">
-                                    <strong>✈️ ${callsign}</strong>
-                                    <div>ICAO: <code>${icao24}</code></div>
-                                    <div>Alt: ${altitude ? Math.round(altitude) + ' m' : 'N/A'}</div>
-                                    <div>Speed: ${velocity ? Math.round(velocity * 3.6) + ' km/h' : 'N/A'}</div>
-                                    <div>Hdg: ${Math.round(heading)}°</div>
-                                </div>
-                            `);
+                                    <div class="aircraft-popup">
+                                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/></svg>
+                                            <strong>${callsign}</strong>
+                                        </div>
+                                        <div>ICAO: <code>${icao24}</code></div>
+                                        <div>Alt: ${altitude ? Math.round(altitude) + ' m' : 'N/A'}</div>
+                                        <div>Speed: ${velocity ? Math.round(velocity * 3.6) + ' km/h' : 'N/A'}</div>
+                                        <div>Hdg: ${Math.round(heading)}°</div>
+                                    </div>
+                                `);
 
                         const marker = new maplibregl.Marker({ element: el, rotation: 0 })
                             .setLngLat([lon, lat])
@@ -952,14 +1050,29 @@ const Map: React.FC<MapProps> = ({ onLoaded }) => {
                         aircraftMarkersRef.current.set(icao24, { marker, trail });
                     }
 
-                    // Show trail when zoomed in enough
-                    if (zoom >= 7 && trail.length >= 2) {
+                    // Show trail based on preference or zoom
+                    const effectiveShowTrail = showTrail || (zoom >= 7 && trail.length >= 2);
+                    if (effectiveShowTrail && trail.length >= 2) {
                         trailFeatures.push({
                             type: 'Feature',
                             id: icao24,
                             properties: { color: isTracked ? '#facc15' : '#60a5fa' },
                             geometry: { type: 'LineString', coordinates: trail }
                         });
+
+                        // Add Start/End labels for tracked path
+                        if (isTracked) {
+                            trailFeatures.push({
+                                type: 'Feature',
+                                properties: { label: 'DEPARTURE', color: '#facc15' },
+                                geometry: { type: 'Point', coordinates: trail[0] }
+                            });
+                            trailFeatures.push({
+                                type: 'Feature',
+                                properties: { label: 'CURRENT', color: '#facc15' },
+                                geometry: { type: 'Point', coordinates: [lon, lat] }
+                            });
+                        }
                     }
                 });
 
@@ -996,7 +1109,7 @@ const Map: React.FC<MapProps> = ({ onLoaded }) => {
             aircraftMarkersRef.current.forEach(({ marker }) => marker.remove());
             aircraftMarkersRef.current.clear();
         };
-    }, [isTrafficVisible, mapLoaded, trackedEntityId, roadGeometry]);
+    }, [isTrafficVisible, isAircraftVisible, mapLoaded, trackedEntityId, roadGeometry, aircraftDisplayMode]);
 
     // ── Moving Car Traffic Animation ──────────────────────────────────────────
     useEffect(() => {
@@ -1211,7 +1324,7 @@ const Map: React.FC<MapProps> = ({ onLoaded }) => {
                 }}
                 title={mapStyle === 'street' ? 'Switch to Satellite' : 'Switch to Street'}
             >
-                {mapStyle === 'street' ? '🛰️' : '🗺️'}
+                {mapStyle === 'street' ? <Satellite size={18} /> : <MapIcon size={18} />}
                 <span className="style-label">{mapStyle === 'street' ? 'Satellite' : 'Street'}</span>
             </button>
 
@@ -1221,7 +1334,7 @@ const Map: React.FC<MapProps> = ({ onLoaded }) => {
                 onClick={() => setIsGlobeView(!isGlobeView)}
                 title={isGlobeView ? 'Switch to Local View' : 'Switch to Globe View'}
             >
-                🌍
+                <Globe size={18} />
                 <span className="style-label">{isGlobeView ? 'Local' : 'Globe'}</span>
             </button>
 
@@ -1232,11 +1345,11 @@ const Map: React.FC<MapProps> = ({ onLoaded }) => {
                 title={isTerrain ? 'Disable 3D Terrain' : 'Enable 3D Terrain'}
                 style={{ bottom: '140px' }}
             >
-                ⛰️
+                <Mountain size={18} />
                 <span className="style-label">{isTerrain ? 'Flat' : '3D'}</span>
             </button>
         </div>
     );
 };
 
-export default Map;
+export default MapView;

@@ -41,6 +41,17 @@ const Preloader: React.FC<PreloaderProps> = ({ isReady }) => {
         }
     }, [isReady, minTimeElapsed]);
 
+    // Safety fallback: force unmount after 15 seconds if stuck
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            if (!shouldUnmount) {
+                console.warn('Preloader safety timeout triggered - forcing unmount');
+                setShouldUnmount(true);
+            }
+        }, 15000);
+        return () => clearTimeout(timer);
+    }, [shouldUnmount]);
+
     if (shouldUnmount) return null;
 
     const isEffectivelyReady = isReady && minTimeElapsed;
@@ -54,14 +65,25 @@ const Preloader: React.FC<PreloaderProps> = ({ isReady }) => {
                         <div className="radar-rings"></div>
                         <div className="radar-core"></div>
 
-                        {/* Orbital Elements */}
-                        <div className="radar-blip blip-1"></div>
-                        <div className="radar-blip blip-2"></div>
-                        <div className="radar-satellite sat-1">
-                            <span className="sat-label">SAT-A1</span>
+                        {/* Orbiting blips/satellites */}
+                        <div className="radar-orbit orbit-1" style={{ '--r': '72px' } as any}>
+                            <div className="radar-blip blip-1"></div>
                         </div>
-                        <div className="radar-satellite sat-2">
-                            <span className="sat-label">NW-45</span>
+
+                        <div className="radar-orbit orbit-2" style={{ '--r': '108px' } as any}>
+                            <div className="radar-blip blip-2"></div>
+                        </div>
+
+                        <div className="radar-orbit orbit-3" style={{ '--r': '140px' } as any}>
+                            <div className="radar-satellite sat-1">
+                                <span className="sat-label">SAT-A1</span>
+                            </div>
+                        </div>
+
+                        <div className="radar-orbit orbit-4 reverse" style={{ '--r': '88px' } as any}>
+                            <div className="radar-satellite sat-2">
+                                <span className="sat-label">NW-45</span>
+                            </div>
                         </div>
                     </div>
 
@@ -71,10 +93,10 @@ const Preloader: React.FC<PreloaderProps> = ({ isReady }) => {
                             <span className="status-label">MISSION STATUS:</span>
                             <span className="status-message">{STATUS_MESSAGES[statusIndex]}</span>
                         </div>
-                    </div>
 
-                    <div className="loading-bar-container">
-                        <div className="loading-bar-fill"></div>
+                        <div className="loading-bar-container">
+                            <div className="loading-bar-fill"></div>
+                        </div>
                     </div>
                 </div>
 

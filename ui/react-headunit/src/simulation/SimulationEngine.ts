@@ -27,6 +27,7 @@ export class SimulationEngine {
     private coveredDistance: number = 0;
     private isOnBreak: boolean = false;
     private breakTimeout: ReturnType<typeof setTimeout> | null = null;
+    private currentCongestion: 'low' | 'moderate' | 'high' = 'low';
 
     /**
      * Calculate distance between two coordinates (Haversine)
@@ -73,15 +74,14 @@ export class SimulationEngine {
      * Start simulation
      */
     start(config: SimulationConfig, initialState?: Partial<SimulationState>): void {
-        // Stop any existing simulation first
         this.stop();
 
         this.config = config;
         this.totalDistance = this.calculateTotalDistance(config.route);
         this.lastTimestamp = performance.now();
         this.isOnBreak = false;
+        this.currentCongestion = 'low';
 
-        // Support resuming from a saved state
         if (initialState) {
             this.state = {
                 ...defaultSimulationState,
@@ -89,7 +89,6 @@ export class SimulationEngine {
                 isRunning: true,
                 isPaused: false
             };
-            // Calculate covered distance from progress
             this.coveredDistance = (this.state.progress / 100) * this.totalDistance;
         } else {
             this.coveredDistance = 0;
@@ -113,6 +112,13 @@ export class SimulationEngine {
     }
 
     /**
+     * Set current congestion level
+     */
+    setCongestion(congestion: 'low' | 'moderate' | 'high'): void {
+        this.currentCongestion = congestion;
+    }
+
+    /**
      * Main animation loop
      */
     private animate = (): void => {
@@ -127,9 +133,18 @@ export class SimulationEngine {
         const speedMultiplier = this.config.speedMultiplier || 1;
         const { route, vehicle } = this.config;
 
+        // Traffic scaling factor
+        const congestionFactor = {
+            'low': 1.0,
+            'moderate': 0.6,
+            'high': 0.25
+        }[this.currentCongestion];
+
+        // Adjusted speed in km/h
+        const adjustedBaseSpeed = vehicle.avgSpeed * congestionFactor;
+
         // Calculate distance to move (km per frame)
-        // Speed in km/h, delta in ms, so: (speed * delta) / (1000 * 3600) = km
-        const speedKmPerMs = (vehicle.avgSpeed * speedMultiplier) / 3600000;
+        const speedKmPerMs = (adjustedBaseSpeed * speedMultiplier) / 3600000;
         const distanceThisFrame = speedKmPerMs * deltaMs;
 
         this.coveredDistance += distanceThisFrame;
@@ -140,7 +155,6 @@ export class SimulationEngine {
         for (let i = 1; i < route.length; i++) {
             const segmentDistance = this.haversineDistance(route[i - 1], route[i]);
             if (accumulatedDistance + segmentDistance >= this.coveredDistance) {
-                // We're in this segment
                 const segmentProgress = (this.coveredDistance - accumulatedDistance) / segmentDistance;
                 this.state.currentPosition = this.interpolate(route[i - 1], route[i], Math.min(1, segmentProgress));
                 break;
@@ -151,18 +165,17 @@ export class SimulationEngine {
         // Update state
         this.state.progress = Math.min(100, (this.coveredDistance / this.totalDistance) * 100);
         this.state.distanceRemaining = Math.max(0, this.totalDistance - this.coveredDistance);
-        this.state.currentSpeed = vehicle.avgSpeed * speedMultiplier;
-        this.state.speedMultiplier = speedMultiplier; // Ensure multiplier is in state
-        this.state.eta = (this.state.distanceRemaining / vehicle.avgSpeed) * 60;
+        this.state.currentSpeed = adjustedBaseSpeed * speedMultiplier;
+        this.state.speedMultiplier = speedMultiplier;
+        this.state.eta = (this.state.distanceRemaining / adjustedBaseSpeed) * 60;
 
-        // Random break check (every ~10km of simulated distance)
+        // Random break check
         if (Math.random() < vehicle.breakProbability * (distanceThisFrame / 10)) {
             this.triggerBreak();
         }
 
         this.config.onUpdate(this.state);
 
-        // Check completion
         if (this.coveredDistance >= this.totalDistance) {
             this.complete();
             return;
@@ -171,9 +184,6 @@ export class SimulationEngine {
         this.animationFrame = requestAnimationFrame(this.animate);
     };
 
-    /**
-     * Trigger a random break
-     */
     private triggerBreak(): void {
         if (!this.config || !this.state.currentPosition) return;
 
@@ -182,7 +192,6 @@ export class SimulationEngine {
         const breakDuration = this.config.vehicle.breakDuration;
         const breakDurationMs = breakDuration * 60000 / (this.config.speedMultiplier || 1);
 
-        // Record break position
         this.state.breakPoints = [
             ...this.state.breakPoints,
             {
@@ -193,29 +202,21 @@ export class SimulationEngine {
         ];
 
         this.config.onBreak(breakDuration);
-        this.config.onUpdate(this.state);  // Update with new break point
+        this.config.onUpdate(this.state);
 
         this.breakTimeout = setTimeout(() => {
             this.isOnBreak = false;
             this.lastTimestamp = performance.now();
             this.animate();
-        }, Math.min(breakDurationMs, 3000)); // Cap at 3s real-time for demo
+        }, Math.min(breakDurationMs, 3000));
     }
 
-    /**
-     * Pause simulation
-     */
     pause(): void {
         this.state.isPaused = true;
-        if (this.animationFrame) {
-            cancelAnimationFrame(this.animationFrame);
-        }
+        if (this.animationFrame) cancelAnimationFrame(this.animationFrame);
         this.config?.onUpdate(this.state);
     }
 
-    /**
-     * Resume simulation
-     */
     resume(): void {
         if (!this.state.isPaused) return;
         this.state.isPaused = false;
@@ -224,23 +225,13 @@ export class SimulationEngine {
         this.config?.onUpdate(this.state);
     }
 
-    /**
-     * Stop simulation
-     */
     stop(): void {
         this.state = { ...defaultSimulationState };
-        if (this.animationFrame) {
-            cancelAnimationFrame(this.animationFrame);
-        }
-        if (this.breakTimeout) {
-            clearTimeout(this.breakTimeout);
-        }
+        if (this.animationFrame) cancelAnimationFrame(this.animationFrame);
+        if (this.breakTimeout) clearTimeout(this.breakTimeout);
         this.config?.onUpdate(this.state);
     }
 
-    /**
-     * Complete simulation
-     */
     private complete(): void {
         this.state.isRunning = false;
         this.state.progress = 100;
@@ -251,31 +242,16 @@ export class SimulationEngine {
         this.config?.onComplete();
     }
 
-    /**
-     * Set speed multiplier
-     */
     setSpeedMultiplier(multiplier: number): void {
-        if (this.config) {
-            this.config.speedMultiplier = multiplier;
-        }
+        if (this.config) this.config.speedMultiplier = multiplier;
     }
 
-    /**
-     * Update route dynamically while running
-     */
     updateRoute(route: [number, number][]): void {
         if (!this.config || !this.state.isRunning) return;
-
-        // Update config with new route
         this.config.route = route;
-
-        // Recalculate total distance for the new route
         this.totalDistance = this.calculateTotalDistance(route);
         this.state.distanceRemaining = Math.max(0, this.totalDistance - this.coveredDistance);
 
-        // Force an immediate position update based on existing coveredDistance
-        // This 'snaps' the vehicle to the correct spot on the new higher-fidelity road
-        // instead of staying on the old interpolated line.
         let accumulatedDistance = 0;
         for (let i = 1; i < route.length; i++) {
             const segmentDistance = this.haversineDistance(route[i - 1], route[i]);
@@ -288,9 +264,6 @@ export class SimulationEngine {
         }
     }
 
-    /**
-     * Get current state
-     */
     getState(): SimulationState {
         return { ...this.state };
     }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Navigation, Play, Pause, Square, Gauge, Plus, X, ChevronUp, ChevronDown, Route } from 'lucide-react';
+import { Navigation, Play, Pause, Square, Gauge, Plus, X, ChevronUp, ChevronDown, Route, Globe, Map as MapIcon, Satellite, Radio, Car, Truck, Bike, CircleDot } from 'lucide-react';
 import SearchableLocationInput from './SearchableLocationInput';
 import type { Location } from './SearchableLocationInput';
 import SettingsModal, { defaultSettings } from './SettingsModal';
@@ -28,8 +28,8 @@ const NavigationPanel: React.FC = () => {
         setIsNavigating, setVehicle,
         startSimulation, pauseSimulation, resumeSimulation, stopSimulation,
         setSpeedMultiplier: setSimSpeed, clearNavigation, setIsStartingNavigation,
-        isGlobeView, isTrafficVisible, trackedEntityId, setIsGlobeView, setIsTrafficVisible, setTrackedEntityId,
-        setCamSettings
+        isGlobeView, isTrafficVisible, setIsGlobeView, setIsTrafficVisible,
+        setCamSettings, routingPreference, setRoutingPreference
     } = useRoute();
 
     // Sync local speed multiplier with context simulation state (for resumption)
@@ -300,7 +300,11 @@ const NavigationPanel: React.FC = () => {
                             onClick={() => handleVehicleSelect(v.type)}
                             title={`${v.name} (${v.avgSpeed} km/h)`}
                         >
-                            <span className="vehicle-icon">{v.icon}</span>
+                            <span className="vehicle-icon">
+                                {v.icon === 'Car' && <Car size={16} />}
+                                {v.icon === 'Truck' && <Truck size={16} />}
+                                {v.icon === 'Bike' && <Bike size={16} />}
+                            </span>
                             <span className="vehicle-name">{v.name}</span>
                         </button>
                     ))}
@@ -334,7 +338,7 @@ const NavigationPanel: React.FC = () => {
                             <div className="stops-list">
                                 {simulation.breakPoints.slice(-3).map((bp, i) => (
                                     <div key={i} className="stop-item">
-                                        <span className="stop-icon">🛑</span>
+                                        <span className="stop-icon"><CircleDot size={12} color="#ef4444" /></span>
                                         <span className="stop-desc">{bp.duration}m break scheduled</span>
                                     </div>
                                 ))}
@@ -361,37 +365,39 @@ const NavigationPanel: React.FC = () => {
                 </div>
             </div>
 
-            {/* Global & Traffic Controls */}
+            {/* Tactical Control Center */}
             <div className="system-controls">
+                <div className="control-label-sm">ROADWAYS & VIEW</div>
                 <div className="control-row">
                     <button
                         className={`system-btn ${isGlobeView ? 'active' : ''}`}
                         onClick={() => setIsGlobeView(!isGlobeView)}
                     >
-                        {isGlobeView ? '🌍 Globe On' : '🗺️ Mercator'}
+                        {isGlobeView ? <><Globe size={14} style={{ marginRight: '6px' }} /> Globe</> : <><MapIcon size={14} style={{ marginRight: '6px' }} /> Mercator</>}
                     </button>
                     <button
                         className={`system-btn ${isTrafficVisible ? 'active' : ''}`}
                         onClick={() => setIsTrafficVisible(!isTrafficVisible)}
                     >
-                        {isTrafficVisible ? '📡 Traffic Live' : '🛰️ Satellite Only'}
+                        {isTrafficVisible ? <><Radio size={14} style={{ marginRight: '6px' }} /> Traffic</> : <><Satellite size={14} style={{ marginRight: '6px' }} /> Satellite</>}
                     </button>
                 </div>
 
-                <div className="control-row aircraft-track">
-                    <input
-                        type="text"
-                        placeholder="Track Aircraft ID (ICAO24)..."
-                        value={trackedEntityId || ''}
-                        onChange={(e) => setTrackedEntityId(e.target.value.toLowerCase())}
-                        className="aircraft-input"
-                    />
-                    {trackedEntityId && (
-                        <button className="clear-track" onClick={() => setTrackedEntityId(null)}>×</button>
-                    )}
+                <div className="control-label-sm" style={{ marginTop: '0.8rem' }}>ROUTING PREFERENCE</div>
+                <div className="control-row secondary-btns">
+                    {(['fastest', 'scenic', 'balanced'] as const).map(pref => (
+                        <button
+                            key={pref}
+                            className={`system-btn-sm ${routingPreference === pref ? 'active' : ''}`}
+                            onClick={() => setRoutingPreference(pref)}
+                        >
+                            {pref.toUpperCase()}
+                        </button>
+                    ))}
                 </div>
 
-                <div className="control-row zoom-control">
+
+                <div className="control-row zoom-control" style={{ marginTop: '0.8rem' }}>
                     <span className="control-label">Zoom: {camSettings.zoom.toFixed(1)}</span>
                     <input
                         type="range"
@@ -399,7 +405,7 @@ const NavigationPanel: React.FC = () => {
                         max="18"
                         step="0.1"
                         value={camSettings.zoom}
-                        onChange={(e) => setCamSettings({ ...camSettings, zoom: parseFloat(e.target.value) })}
+                        onChange={(e) => setCamSettings({ zoom: parseFloat(e.target.value) })}
                         className="zoom-slider"
                     />
                 </div>
