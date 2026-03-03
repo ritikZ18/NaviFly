@@ -3,6 +3,7 @@ import React, { createContext, useContext, useState, useEffect, useRef } from 'r
 import type { ReactNode } from 'react';
 import type { Vehicle, SimulationState } from '../simulation/Vehicle';
 import { defaultSimulationState, SimulationEngine, VehicleFactory } from '../simulation';
+import { useTelemetry } from './TelemetryContext';
 
 export interface RouteNode {
     id: string;
@@ -48,6 +49,9 @@ interface RouteState {
         vignette: number;
         zoom: number;
     };
+    isGlobeView: boolean;
+    isTrafficVisible: boolean;
+    trackedEntityId: string | null;
 }
 
 interface RouteContextType extends RouteState {
@@ -79,6 +83,9 @@ interface RouteContextType extends RouteState {
     setIsScope: (isScope: boolean) => void;
     setIsGrid: (isGrid: boolean) => void;
     setCamSettings: (settings: Partial<RouteState['camSettings']>) => void;
+    setIsGlobeView: (isGlobe: boolean) => void;
+    setIsTrafficVisible: (isVisible: boolean) => void;
+    setTrackedEntityId: (id: string | null) => void;
 }
 
 const STORAGE_KEY = 'navifly-route-state';
@@ -109,7 +116,10 @@ const defaultState: RouteState = {
         grain: 0.1,
         vignette: 0.3,
         zoom: 12.0
-    }
+    },
+    isGlobeView: false,
+    isTrafficVisible: false,
+    trackedEntityId: null
 };
 
 const RouteContext = createContext<RouteContextType | undefined>(undefined);
@@ -155,6 +165,7 @@ export const RouteProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const [state, setState] = useState<RouteState>(loadState);
     const [isStartingNavigation, setIsStartingNavigation] = useState(false);
     const simulationRef = useRef<SimulationEngine | null>(null);
+    const { startSession, endSession, recordSpeedSample, recordBreak } = useTelemetry();
 
     useEffect(() => {
         saveState(state);
@@ -196,21 +207,39 @@ export const RouteProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             return;
         }
 
+        // Start a telemetry session
+        const startName = state.startLocation?.name ?? 'Start';
+        const endName = state.endLocation?.name ?? 'End';
+        const wps = state.waypoints.map(w => w.name);
+        startSession({
+            routeLabel: `${startName} → ${endName}`,
+            vehicle: state.vehicle.type ?? 'car',
+            waypoints: wps,
+            distanceKm: 0, // will be calculated when session ends
+        });
+
         simulationRef.current?.start({
             route,
             vehicle: state.vehicle,
-            speedMultiplier: initialState?.speedMultiplier || 50, // Default to 50x
+            speedMultiplier: initialState?.speedMultiplier || 50,
             onUpdate: (simState) => {
                 setState(prev => ({ ...prev, simulation: simState }));
+                // Sample speed every ~5s (engine calls onUpdate ~10x/s, sample 1 in 50)
+                if (Math.random() < 0.02) {
+                    const speedKmh = Math.round((simState.currentSpeed ?? 0) * 3.6);
+                    recordSpeedSample(speedKmh);
+                }
             },
             onComplete: () => {
                 setState(prev => ({
                     ...prev,
                     simulation: { ...prev.simulation, isRunning: false }
                 }));
+                endSession();
             },
             onBreak: (duration) => {
                 console.log(`Vehicle taking a ${duration} minute break`);
+                recordBreak(duration);
             }
         }, initialState);
     };
@@ -362,7 +391,10 @@ export const RouteProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             setVisualMode,
             setIsScope,
             setIsGrid,
-            setCamSettings
+            setCamSettings,
+            setIsGlobeView: (isGlobe: boolean) => setState(prev => ({ ...prev, isGlobeView: isGlobe })),
+            setIsTrafficVisible: (isVisible: boolean) => setState(prev => ({ ...prev, isTrafficVisible: isVisible })),
+            setTrackedEntityId: (id: string | null) => setState(prev => ({ ...prev, trackedEntityId: id }))
         }}>
             {children}
         </RouteContext.Provider>

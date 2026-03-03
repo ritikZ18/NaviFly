@@ -22,12 +22,14 @@ const NavigationPanel: React.FC = () => {
 
     const {
         startId, endId, isNavigating, simulation, vehicle, roadGeometry,
-        startLocation, endLocation, waypoints,
+        startLocation, endLocation, waypoints, camSettings,
         setStartId, setEndId, setStartLocation, setEndLocation,
         addWaypoint, removeWaypoint, reorderWaypoints,
         setIsNavigating, setVehicle,
         startSimulation, pauseSimulation, resumeSimulation, stopSimulation,
-        setSpeedMultiplier: setSimSpeed, clearNavigation, setIsStartingNavigation
+        setSpeedMultiplier: setSimSpeed, clearNavigation, setIsStartingNavigation,
+        isGlobeView, isTrafficVisible, trackedEntityId, setIsGlobeView, setIsTrafficVisible, setTrackedEntityId,
+        setCamSettings
     } = useRoute();
 
     // Sync local speed multiplier with context simulation state (for resumption)
@@ -359,11 +361,55 @@ const NavigationPanel: React.FC = () => {
                 </div>
             </div>
 
+            {/* Global & Traffic Controls */}
+            <div className="system-controls">
+                <div className="control-row">
+                    <button
+                        className={`system-btn ${isGlobeView ? 'active' : ''}`}
+                        onClick={() => setIsGlobeView(!isGlobeView)}
+                    >
+                        {isGlobeView ? '🌍 Globe On' : '🗺️ Mercator'}
+                    </button>
+                    <button
+                        className={`system-btn ${isTrafficVisible ? 'active' : ''}`}
+                        onClick={() => setIsTrafficVisible(!isTrafficVisible)}
+                    >
+                        {isTrafficVisible ? '📡 Traffic Live' : '🛰️ Satellite Only'}
+                    </button>
+                </div>
+
+                <div className="control-row aircraft-track">
+                    <input
+                        type="text"
+                        placeholder="Track Aircraft ID (ICAO24)..."
+                        value={trackedEntityId || ''}
+                        onChange={(e) => setTrackedEntityId(e.target.value.toLowerCase())}
+                        className="aircraft-input"
+                    />
+                    {trackedEntityId && (
+                        <button className="clear-track" onClick={() => setTrackedEntityId(null)}>×</button>
+                    )}
+                </div>
+
+                <div className="control-row zoom-control">
+                    <span className="control-label">Zoom: {camSettings.zoom.toFixed(1)}</span>
+                    <input
+                        type="range"
+                        min="2"
+                        max="18"
+                        step="0.1"
+                        value={camSettings.zoom}
+                        onChange={(e) => setCamSettings({ ...camSettings, zoom: parseFloat(e.target.value) })}
+                        className="zoom-slider"
+                    />
+                </div>
+            </div>
+
             {/* Speed Control */}
             {isNavigating && (
                 <div className="speed-control">
                     <Gauge size={16} />
-                    <span>Speed: {speedMultiplier}x</span>
+                    <span>Sim Speed: {speedMultiplier}x</span>
                     <input
                         type="range"
                         min="1"

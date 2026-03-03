@@ -149,4 +149,88 @@ describe('RouteContext', () => {
         expect(context.endId).toBe('saved-end');
         expect(context.isNavigating).toBe(true);
     });
+
+    // ── New: Globe View / Traffic / Aircraft Tracking ──
+
+    it('should initialize isGlobeView as false', () => {
+        let context: any;
+        render(
+            <RouteProvider>
+                <TestComponent onContext={(ctx) => { context = ctx; }} />
+            </RouteProvider>
+        );
+        expect(context.isGlobeView).toBe(false);
+    });
+
+    it('should toggle isGlobeView', async () => {
+        let context: any;
+        render(
+            <RouteProvider>
+                <TestComponent onContext={(ctx) => { context = ctx; }} />
+            </RouteProvider>
+        );
+
+        await act(async () => {
+            context.setIsGlobeView(true);
+        });
+        expect(context.isGlobeView).toBe(true);
+
+        await act(async () => {
+            context.setIsGlobeView(false);
+        });
+        expect(context.isGlobeView).toBe(false);
+    });
+
+    it('should initialize isTrafficVisible as false', () => {
+        let context: any;
+        render(
+            <RouteProvider>
+                <TestComponent onContext={(ctx) => { context = ctx; }} />
+            </RouteProvider>
+        );
+        expect(context.isTrafficVisible).toBe(false);
+    });
+
+    it('should toggle isTrafficVisible', async () => {
+        let context: any;
+        render(
+            <RouteProvider>
+                <TestComponent onContext={(ctx) => { context = ctx; }} />
+            </RouteProvider>
+        );
+
+        await act(async () => {
+            context.setIsTrafficVisible(true);
+        });
+        expect(context.isTrafficVisible).toBe(true);
+    });
+
+    it('should initialize trackedEntityId as null', () => {
+        let context: any;
+        render(
+            <RouteProvider>
+                <TestComponent onContext={(ctx) => { context = ctx; }} />
+            </RouteProvider>
+        );
+        expect(context.trackedEntityId).toBeNull();
+    });
+
+    it('should set and clear trackedEntityId', async () => {
+        let context: any;
+        render(
+            <RouteProvider>
+                <TestComponent onContext={(ctx) => { context = ctx; }} />
+            </RouteProvider>
+        );
+
+        await act(async () => {
+            context.setTrackedEntityId('a1b2c3');
+        });
+        expect(context.trackedEntityId).toBe('a1b2c3');
+
+        await act(async () => {
+            context.setTrackedEntityId(null);
+        });
+        expect(context.trackedEntityId).toBeNull();
+    });
 });

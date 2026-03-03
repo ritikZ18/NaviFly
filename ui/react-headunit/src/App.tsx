@@ -2,7 +2,10 @@ import { useState, useEffect, useCallback } from 'react'
 import Map from './components/Map'
 import NavigationPanel from './components/NavigationPanel'
 import Preloader from './components/Preloader'
+import TelemetryPanel from './components/TelemetryPanel'
+import Toast, { useToastManager } from './components/Toast'
 import { RouteProvider, useRoute } from './context/RouteContext'
+import { TelemetryProvider } from './context/TelemetryContext'
 import './index.css'
 
 function HeadUnit() {
@@ -10,6 +13,7 @@ function HeadUnit() {
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [isOpsMenuOpen, setIsOpsMenuOpen] = useState(false)
   const [isMapReady, setIsMapReady] = useState(false)
+  const { toasts, dismiss } = useToastManager();
 
   const {
     isTracking,
@@ -97,59 +101,40 @@ function HeadUnit() {
                       <span>Brightness</span>
                       <span>{camSettings.brightness.toFixed(1)}x</span>
                     </div>
-                    <input
-                      type="range" min="0.5" max="2.0" step="0.1"
-                      value={camSettings.brightness}
-                      onChange={(e) => setCamSettings({ brightness: parseFloat(e.target.value) })}
-                    />
+                    <input type="range" min="0.5" max="2.0" step="0.1" value={camSettings.brightness}
+                      onChange={(e) => setCamSettings({ brightness: parseFloat(e.target.value) })} />
                   </div>
-
                   <div className="hud-row-slider">
                     <div className="slider-label">
                       <span>Contrast</span>
                       <span>{camSettings.contrast.toFixed(1)}x</span>
                     </div>
-                    <input
-                      type="range" min="0.5" max="2.5" step="0.1"
-                      value={camSettings.contrast}
-                      onChange={(e) => setCamSettings({ contrast: parseFloat(e.target.value) })}
-                    />
+                    <input type="range" min="0.5" max="2.5" step="0.1" value={camSettings.contrast}
+                      onChange={(e) => setCamSettings({ contrast: parseFloat(e.target.value) })} />
                   </div>
-
                   <div className="hud-row-slider">
                     <div className="slider-label">
                       <span>Grain</span>
                       <span>{(camSettings.grain * 100).toFixed(0)}%</span>
                     </div>
-                    <input
-                      type="range" min="0" max="1" step="0.05"
-                      value={camSettings.grain}
-                      onChange={(e) => setCamSettings({ grain: parseFloat(e.target.value) })}
-                    />
+                    <input type="range" min="0" max="1" step="0.05" value={camSettings.grain}
+                      onChange={(e) => setCamSettings({ grain: parseFloat(e.target.value) })} />
                   </div>
-
                   <div className="hud-row-slider">
                     <div className="slider-label">
                       <span>Vignette</span>
                       <span>{(camSettings.vignette * 100).toFixed(0)}%</span>
                     </div>
-                    <input
-                      type="range" min="0" max="1" step="0.05"
-                      value={camSettings.vignette}
-                      onChange={(e) => setCamSettings({ vignette: parseFloat(e.target.value) })}
-                    />
+                    <input type="range" min="0" max="1" step="0.05" value={camSettings.vignette}
+                      onChange={(e) => setCamSettings({ vignette: parseFloat(e.target.value) })} />
                   </div>
-
                   <div className="hud-row-slider">
                     <div className="slider-label">
                       <span>Tracking Zoom</span>
                       <span>{camSettings.zoom.toFixed(1)}x</span>
                     </div>
-                    <input
-                      type="range" min="8" max="18" step="0.5"
-                      value={camSettings.zoom}
-                      onChange={(e) => setCamSettings({ zoom: parseFloat(e.target.value) })}
-                    />
+                    <input type="range" min="8" max="18" step="0.5" value={camSettings.zoom}
+                      onChange={(e) => setCamSettings({ zoom: parseFloat(e.target.value) })} />
                   </div>
                 </div>
               )}
@@ -189,6 +174,12 @@ function HeadUnit() {
           </feComponentTransfer>
         </filter>
       </svg>
+
+      {/* Telemetry slide-in panel */}
+      <TelemetryPanel />
+
+      {/* Toast notifications */}
+      <Toast toasts={toasts} onDismiss={dismiss} />
     </div>
   )
 }
@@ -196,7 +187,9 @@ function HeadUnit() {
 function App() {
   return (
     <RouteProvider>
-      <HeadUnit />
+      <TelemetryProvider>
+        <HeadUnit />
+      </TelemetryProvider>
     </RouteProvider>
   )
 }
