@@ -14,6 +14,7 @@ NC='\033[0m' # No Color
 BACKGROUND_MODE=false
 CLEAN_MODE=false
 FOLLOW_LOGS=false
+NO_CACHE_MODE=false
 
 # Usage information
 show_usage() {
@@ -22,6 +23,7 @@ show_usage() {
     echo "Options:"
     echo "  --bg, --background    Start in background mode (shorthand for -d)"
     echo "  --clean               Remove volumes and orphans before starting"
+    echo "  --no-cache            Rebuild all containers without Docker layer cache"
     echo "  --logs                Automatically follow logs after startup"
     echo "  --stop                Stop all NaviFly services"
     echo "  --help                Show this help message"
@@ -31,6 +33,9 @@ for arg in "$@"; do
     case $arg in
         --bg|--background)
             BACKGROUND_MODE=true
+            ;;
+        --no-cache|--no-cache-build)
+            NO_CACHE_MODE=true
             ;;
         --clean)
             CLEAN_MODE=true
@@ -121,6 +126,13 @@ if [ "$CLEAN_MODE" = true ]; then
 fi
 
 # 5. Build and Start
+if [ "$NO_CACHE_MODE" = true ]; then
+    echo -e "${YELLOW}♻️  --no-cache: rebuilding all images from scratch...${NC}"
+    # --no-cache goes to 'build', not 'up'
+    docker compose build --no-cache
+    echo -e "${GREEN}✅ Images rebuilt (no cache)${NC}"
+fi
+
 if [ "$BACKGROUND_MODE" = true ]; then
     echo -e "${YELLOW}🚀 Starting in BACKGROUND mode...${NC}"
     docker compose up --build -d > /dev/null

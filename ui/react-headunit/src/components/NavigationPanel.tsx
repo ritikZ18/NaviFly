@@ -1,19 +1,13 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Navigation, MapPin, Radio, Settings as SettingsIcon, Play, Pause, Square, Gauge } from 'lucide-react';
-import LocationSelector from './LocationSelector';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Navigation, Play, Pause, Square, Gauge, Plus, X, ChevronUp, ChevronDown, Route, Globe, Map as MapIcon, Satellite, Radio, Car, Truck, Bike, CircleDot } from 'lucide-react';
+import SearchableLocationInput from './SearchableLocationInput';
+import type { Location } from './SearchableLocationInput';
 import SettingsModal, { defaultSettings } from './SettingsModal';
 import type { Settings } from './SettingsModal';
 import { useRoute } from '../context/RouteContext';
 import { VehicleFactory } from '../simulation';
 import type { VehicleType } from '../simulation';
 import RouteOptions from './RouteOptions';
-
-interface Location {
-    id: string;
-    name: string;
-    lat: number;
-    lon: number;
-}
 
 const NavigationPanel: React.FC = () => {
     const [locations, setLocations] = useState<Location[]>([]);
@@ -22,13 +16,20 @@ const NavigationPanel: React.FC = () => {
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [settings, setSettings] = useState<Settings>(defaultSettings);
     const [speedMultiplier, setSpeedMultiplier] = useState(1);
+    const [isRouteConfirmed, setIsRouteConfirmed] = useState(false);
+    const [isFindingRoute, setIsFindingRoute] = useState(false);
     const hasFetched = useRef(false);
 
     const {
         startId, endId, isNavigating, simulation, vehicle, roadGeometry,
-        setStartId, setEndId, setIsNavigating, setVehicle,
+        startLocation, endLocation, waypoints, camSettings,
+        setStartId, setEndId, setStartLocation, setEndLocation,
+        addWaypoint, removeWaypoint, reorderWaypoints,
+        setIsNavigating, setVehicle,
         startSimulation, pauseSimulation, resumeSimulation, stopSimulation,
-        setSpeedMultiplier: setSimSpeed, clearNavigation, setIsStartingNavigation
+        setSpeedMultiplier: setSimSpeed, clearNavigation, setIsStartingNavigation,
+        isGlobeView, isTrafficVisible, setIsGlobeView, setIsTrafficVisible,
+        setCamSettings, routingPreference, setRoutingPreference
     } = useRoute();
 
     // Sync local speed multiplier with context simulation state (for resumption)
@@ -66,8 +67,29 @@ const NavigationPanel: React.FC = () => {
         setVehicle(VehicleFactory.create(type));
     };
 
-    const handleStartNavigation = () => {
+    const handleFindRoute = useCallback(async () => {
         if (!startId || !endId || startId === endId) return;
+        setIsFindingRoute(true);
+        try {
+            const fetchFn = (window as unknown as Record<string, unknown>).__naviflyFetchRoute as (() => Promise<void>) | undefined;
+            if (fetchFn) {
+                await fetchFn();
+            }
+            setIsRouteConfirmed(true);
+        } catch (e) {
+            console.error('Route fetch failed:', e);
+        } finally {
+            setIsFindingRoute(false);
+        }
+    }, [startId, endId]);
+
+    // Reset route confirmation when locations change
+    useEffect(() => {
+        setIsRouteConfirmed(false);
+    }, [startId, endId, waypoints]);
+
+    const handleStartNavigation = () => {
+        if (!startId || !endId || startId === endId || !isRouteConfirmed) return;
 
         // Transition immediately to navigation mode
         setIsStartingNavigation(false);
@@ -128,6 +150,14 @@ const NavigationPanel: React.FC = () => {
 
     const allVehicles = VehicleFactory.getAllVehicles();
 
+    // Helper: move waypoint up/down
+    const moveWaypoint = (index: number, direction: 'up' | 'down') => {
+        const newIndex = direction === 'up' ? index - 1 : index + 1;
+        if (newIndex >= 0 && newIndex < waypoints.length) {
+            reorderWaypoints(index, newIndex);
+        }
+    };
+
     return (
         <div className={`navigation-panel ${settings.darkMode ? 'dark' : 'light'}`}>
             <div className="brand">
@@ -135,7 +165,7 @@ const NavigationPanel: React.FC = () => {
                 <p>FLEET COMMAND • ARIZONA</p>
             </div>
 
-            {/* Location Selection */}
+            {/* Location Selection - Google Maps Style */}
             <div className="route-selection">
                 {isLoading ? (
                     <div className="loading-state">Loading locations...</div>
@@ -143,25 +173,125 @@ const NavigationPanel: React.FC = () => {
                     <div className="error-state">{error}</div>
                 ) : (
                     <>
-                        <LocationSelector
+                        <SearchableLocationInput
                             label="Start"
-                            value={startId}
+                            value={startLocation}
                             locations={locations}
-                            onChange={setStartId}
+                            onChange={(loc) => {
+                                setStartLocation(loc);
+                                if (loc) setStartId(loc.id);
+                                else setStartId('');
+                            }}
                             icon="start"
+                            placeholder="Search start location..."
                         />
-                        <LocationSelector
+
+                        {/* Intermediate Stops */}
+                        {waypoints.length > 0 && (
+                            <div className="waypoints-list">
+                                {waypoints.map((wp, i) => (
+                                    <div key={`wp-${i}-${wp.id}`} className="waypoint-row">
+                                        <div className="waypoint-number">{i + 1}</div>
+                                        <SearchableLocationInput
+                                            label={`Stop ${i + 1}`}
+                                            value={wp}
+                                            locations={locations.filter(l =>
+                                                l.id !== startId && l.id !== endId &&
+                                                !waypoints.some((w, j) => j !== i && w.id === l.id)
+                                            )}
+                                            onChange={(loc) => {
+                                                if (loc) {
+                                                    // Replace waypoint at index
+                                                    removeWaypoint(i);
+                                                    // Need to use timeout to ensure state updates
+                                                    setTimeout(() => {
+                                                        addWaypoint(loc);
+                                                    }, 0);
+                                                } else {
+                                                    removeWaypoint(i);
+                                                }
+                                            }}
+                                            icon="stop"
+                                            placeholder="Search stop..."
+                                        />
+                                        <div className="waypoint-actions">
+                                            <button
+                                                className="wp-btn"
+                                                onClick={() => moveWaypoint(i, 'up')}
+                                                disabled={i === 0}
+                                                title="Move up"
+                                            >
+                                                <ChevronUp size={12} />
+                                            </button>
+                                            <button
+                                                className="wp-btn"
+                                                onClick={() => moveWaypoint(i, 'down')}
+                                                disabled={i === waypoints.length - 1}
+                                                title="Move down"
+                                            >
+                                                <ChevronDown size={12} />
+                                            </button>
+                                            <button
+                                                className="wp-btn wp-remove"
+                                                onClick={() => removeWaypoint(i)}
+                                                title="Remove stop"
+                                            >
+                                                <X size={12} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* Add Stop Button */}
+                        {waypoints.length < 5 && (
+                            <button
+                                className="add-stop-btn"
+                                onClick={() => {
+                                    // Add a placeholder that will be replaced on selection
+                                    addWaypoint({ id: `temp-${Date.now()}`, name: '', lat: 0, lon: 0 });
+                                }}
+                            >
+                                <Plus size={14} />
+                                Add Stop {waypoints.length > 0 && `(${waypoints.length}/5)`}
+                            </button>
+                        )}
+
+                        <SearchableLocationInput
                             label="Destination"
-                            value={endId}
-                            locations={locations}
-                            onChange={setEndId}
+                            value={endLocation}
+                            locations={locations.filter(l => l.id !== startId)}
+                            onChange={(loc) => {
+                                setEndLocation(loc);
+                                if (loc) setEndId(loc.id);
+                                else setEndId('');
+                            }}
                             icon="end"
+                            placeholder="Search destination..."
                         />
+
+                        {/* Find Route Button */}
+                        {startId && endId && startId !== endId && !isNavigating && (
+                            <button
+                                className={`btn-find-route ${isRouteConfirmed ? 'route-confirmed' : ''}`}
+                                onClick={handleFindRoute}
+                                disabled={isFindingRoute}
+                            >
+                                <Route size={16} />
+                                {isFindingRoute ? 'Finding Route...' : isRouteConfirmed ? '✓ Route Found — Recalculate' : 'FIND ROUTE'}
+                            </button>
+                        )}
+                        {/* Route Select Cards — shown after FIND ROUTE, before START NAVIGATION */}
+                        {isRouteConfirmed && !isNavigating && (
+                            <RouteOptions />
+                        )}
+
                     </>
                 )}
             </div>
 
-            {/* Route Selection Cards (Stage 1) */}
+            {/* Route Selection Cards during active navigation */}
             {isNavigating && <RouteOptions />}
 
             {/* Vehicle Selector */}
@@ -175,7 +305,11 @@ const NavigationPanel: React.FC = () => {
                             onClick={() => handleVehicleSelect(v.type)}
                             title={`${v.name} (${v.avgSpeed} km/h)`}
                         >
-                            <span className="vehicle-icon">{v.icon}</span>
+                            <span className="vehicle-icon">
+                                {v.icon === 'Car' && <Car size={16} />}
+                                {v.icon === 'Truck' && <Truck size={16} />}
+                                {v.icon === 'Bike' && <Bike size={16} />}
+                            </span>
                             <span className="vehicle-name">{v.name}</span>
                         </button>
                     ))}
@@ -209,7 +343,7 @@ const NavigationPanel: React.FC = () => {
                             <div className="stops-list">
                                 {simulation.breakPoints.slice(-3).map((bp, i) => (
                                     <div key={i} className="stop-item">
-                                        <span className="stop-icon">🛑</span>
+                                        <span className="stop-icon"><CircleDot size={12} color="#ef4444" /></span>
                                         <span className="stop-desc">{bp.duration}m break scheduled</span>
                                     </div>
                                 ))}
@@ -236,11 +370,57 @@ const NavigationPanel: React.FC = () => {
                 </div>
             </div>
 
+            {/* Tactical Control Center */}
+            <div className="system-controls">
+                <div className="control-label-sm">ROADWAYS & VIEW</div>
+                <div className="control-row">
+                    <button
+                        className={`system-btn ${isGlobeView ? 'active' : ''}`}
+                        onClick={() => setIsGlobeView(!isGlobeView)}
+                    >
+                        {isGlobeView ? <><Globe size={14} style={{ marginRight: '6px' }} /> Globe</> : <><MapIcon size={14} style={{ marginRight: '6px' }} /> Mercator</>}
+                    </button>
+                    <button
+                        className={`system-btn ${isTrafficVisible ? 'active' : ''}`}
+                        onClick={() => setIsTrafficVisible(!isTrafficVisible)}
+                    >
+                        {isTrafficVisible ? <><Radio size={14} style={{ marginRight: '6px' }} /> Traffic</> : <><Satellite size={14} style={{ marginRight: '6px' }} /> Satellite</>}
+                    </button>
+                </div>
+
+                <div className="control-label-sm" style={{ marginTop: '0.8rem' }}>ROUTING PREFERENCE</div>
+                <div className="control-row secondary-btns">
+                    {(['fastest', 'scenic', 'balanced'] as const).map(pref => (
+                        <button
+                            key={pref}
+                            className={`system-btn-sm ${routingPreference === pref ? 'active' : ''}`}
+                            onClick={() => setRoutingPreference(pref)}
+                        >
+                            {pref.toUpperCase()}
+                        </button>
+                    ))}
+                </div>
+
+
+                <div className="control-row zoom-control" style={{ marginTop: '0.8rem' }}>
+                    <span className="control-label">Zoom: {camSettings.zoom.toFixed(1)}</span>
+                    <input
+                        type="range"
+                        min="2"
+                        max="18"
+                        step="0.1"
+                        value={camSettings.zoom}
+                        onChange={(e) => setCamSettings({ zoom: parseFloat(e.target.value) })}
+                        className="zoom-slider"
+                    />
+                </div>
+            </div>
+
             {/* Speed Control */}
             {isNavigating && (
                 <div className="speed-control">
                     <Gauge size={16} />
-                    <span>Speed: {speedMultiplier}x</span>
+                    <span>Sim Speed: {speedMultiplier}x</span>
                     <input
                         type="range"
                         min="1"
@@ -258,7 +438,7 @@ const NavigationPanel: React.FC = () => {
                     <button
                         className="btn-primary"
                         onClick={handleStartNavigation}
-                        disabled={!startId || !endId || startId === '' || endId === '' || startId === endId || isLoading}
+                        disabled={!startId || !endId || startId === '' || endId === '' || startId === endId || isLoading || !isRouteConfirmed}
                     >
                         <Navigation size={18} />
                         START NAVIGATION
@@ -293,17 +473,13 @@ const NavigationPanel: React.FC = () => {
 
             {/* Footer Icons */}
             <div className="footer-icons">
-                <MapPin size={20} />
-                <Radio size={20} />
-                <SettingsIcon size={20} onClick={() => setIsSettingsOpen(true)} />
+                <SettingsModal
+                    isOpen={isSettingsOpen}
+                    onClose={() => setIsSettingsOpen(false)}
+                    settings={settings}
+                    onSettingsChange={setSettings}
+                />
             </div>
-
-            <SettingsModal
-                isOpen={isSettingsOpen}
-                onClose={() => setIsSettingsOpen(false)}
-                settings={settings}
-                onSettingsChange={setSettings}
-            />
         </div>
     );
 };

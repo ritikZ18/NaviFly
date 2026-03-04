@@ -3,12 +3,24 @@ import React, { createContext, useContext, useState, useEffect, useRef } from 'r
 import type { ReactNode } from 'react';
 import type { Vehicle, SimulationState } from '../simulation/Vehicle';
 import { defaultSimulationState, SimulationEngine, VehicleFactory } from '../simulation';
+import { useTelemetry } from './TelemetryContext';
 
-interface RouteNode {
+export interface RouteNode {
     id: string;
     name: string;
     lat: number;
     lon: number;
+}
+
+export interface WebcamData {
+    id: string;
+    title: string;
+    lat: number;
+    lon: number;
+    previewUrl?: string;
+    streamUrl?: string;
+    providerUrl?: string;
+    distance?: number;
 }
 
 interface AlternativeRoute {
@@ -26,6 +38,9 @@ export type RoadGeometry =
 interface RouteState {
     startId: string;
     endId: string;
+    startLocation: RouteNode | null;
+    endLocation: RouteNode | null;
+    waypoints: RouteNode[]; // max 5 intermediate stops
     routeNodes: RouteNode[];
     roadGeometry: RoadGeometry | null;
     optimalGeometry: RoadGeometry | null;
@@ -45,11 +60,44 @@ interface RouteState {
         vignette: number;
         zoom: number;
     };
+    isGlobeView: boolean;
+    isTrafficVisible: boolean;
+    isAircraftVisible: boolean;
+    trackedEntityId: string | null;
+    trackedAircraftData: {
+        callsign: string;
+        icao24: string;
+        altitude: number | null;
+        velocity: number | null;
+        heading: number | null;
+    } | null;
+    trafficStats: {
+        density: 'low' | 'medium' | 'high';
+        count: number;
+        avgSpeed: number;
+    } | null;
+    trainStats: {
+        activeTrains: number;
+        nextStation: string;
+    } | null;
+    aircraftDisplayMode: 'icon' | 'name' | 'path' | 'full';
+    routingPreference: 'fastest' | 'scenic' | 'balanced';
+    persistAircraftTraffic: boolean;
+    persistVehicleTraffic: boolean;
+    isWebcamEnabled: boolean;
+    searchWebcams: WebcamData[];
+    attachedWebcams: Record<string, WebcamData>; // taskId or entityId -> webcam
 }
 
 interface RouteContextType extends RouteState {
     setStartId: (id: string) => void;
     setEndId: (id: string) => void;
+    setStartLocation: (loc: RouteNode | null) => void;
+    setEndLocation: (loc: RouteNode | null) => void;
+    addWaypoint: (loc: RouteNode) => void;
+    removeWaypoint: (index: number) => void;
+    reorderWaypoints: (from: number, to: number) => void;
+    clearWaypoints: () => void;
     setRouteNodes: (nodes: RouteNode[]) => void;
     setRoadGeometry: (geometry: RoadGeometry | null) => void;
     setOptimalGeometry: (geometry: RoadGeometry | null) => void;
@@ -70,6 +118,20 @@ interface RouteContextType extends RouteState {
     setIsScope: (isScope: boolean) => void;
     setIsGrid: (isGrid: boolean) => void;
     setCamSettings: (settings: Partial<RouteState['camSettings']>) => void;
+    setIsGlobeView: (isGlobe: boolean) => void;
+    setIsTrafficVisible: (isVisible: boolean) => void;
+    setIsAircraftVisible: (isVisible: boolean) => void;
+    setTrackedEntityId: (id: string | null) => void;
+    setTrackedAircraftData: (data: RouteState['trackedAircraftData']) => void;
+    setTrafficStats: (stats: RouteState['trafficStats']) => void;
+    setTrainStats: (stats: RouteState['trainStats']) => void;
+    setAircraftDisplayMode: (mode: 'icon' | 'name' | 'path' | 'full') => void;
+    setRoutingPreference: (pref: 'fastest' | 'scenic' | 'balanced') => void;
+    setPersistAircraftTraffic: (v: boolean) => void;
+    setPersistVehicleTraffic: (v: boolean) => void;
+    setIsWebcamEnabled: (v: boolean) => void;
+    setSearchWebcams: (results: WebcamData[]) => void;
+    setAttachedWebcam: (id: string, webcam: WebcamData | null) => void;
 }
 
 const STORAGE_KEY = 'navifly-route-state';
@@ -79,6 +141,9 @@ const defaultVehicle = VehicleFactory.create('car');
 const defaultState: RouteState = {
     startId: '',
     endId: '',
+    startLocation: null,
+    endLocation: null,
+    waypoints: [],
     routeNodes: [],
     roadGeometry: null,
     optimalGeometry: null,
@@ -97,7 +162,21 @@ const defaultState: RouteState = {
         grain: 0.1,
         vignette: 0.3,
         zoom: 12.0
-    }
+    },
+    isGlobeView: false,
+    isTrafficVisible: false,
+    isAircraftVisible: false,
+    trackedEntityId: null,
+    trackedAircraftData: null,
+    trafficStats: null,
+    trainStats: null,
+    aircraftDisplayMode: 'icon',
+    routingPreference: 'balanced',
+    persistAircraftTraffic: false,
+    persistVehicleTraffic: false,
+    isWebcamEnabled: false,
+    searchWebcams: [],
+    attachedWebcams: {},
 };
 
 const RouteContext = createContext<RouteContextType | undefined>(undefined);
@@ -143,6 +222,7 @@ export const RouteProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const [state, setState] = useState<RouteState>(loadState);
     const [isStartingNavigation, setIsStartingNavigation] = useState(false);
     const simulationRef = useRef<SimulationEngine | null>(null);
+    const { startSession, endSession, recordSpeedSample, recordBreak } = useTelemetry();
 
     useEffect(() => {
         saveState(state);
@@ -184,21 +264,39 @@ export const RouteProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             return;
         }
 
+        // Start a telemetry session
+        const startName = state.startLocation?.name ?? 'Start';
+        const endName = state.endLocation?.name ?? 'End';
+        const wps = state.waypoints.map(w => w.name);
+        startSession({
+            routeLabel: `${startName} → ${endName}`,
+            vehicle: state.vehicle.type ?? 'car',
+            waypoints: wps,
+            distanceKm: 0, // will be calculated when session ends
+        });
+
         simulationRef.current?.start({
             route,
             vehicle: state.vehicle,
-            speedMultiplier: initialState?.speedMultiplier || 50, // Default to 50x
+            speedMultiplier: initialState?.speedMultiplier || 50,
             onUpdate: (simState) => {
                 setState(prev => ({ ...prev, simulation: simState }));
+                // Sample speed every ~5s (engine calls onUpdate ~10x/s, sample 1 in 50)
+                if (Math.random() < 0.02) {
+                    const speedKmh = Math.round(simState.currentSpeed ?? 0);
+                    recordSpeedSample(speedKmh);
+                }
             },
             onComplete: () => {
                 setState(prev => ({
                     ...prev,
                     simulation: { ...prev.simulation, isRunning: false }
                 }));
+                endSession();
             },
             onBreak: (duration) => {
                 console.log(`Vehicle taking a ${duration} minute break`);
+                recordBreak(duration);
             }
         }, initialState);
     };
@@ -221,6 +319,32 @@ export const RouteProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     const setStartId = (id: string) => setState(prev => ({ ...prev, startId: id }));
     const setEndId = (id: string) => setState(prev => ({ ...prev, endId: id }));
+    const setStartLocation = (loc: RouteNode | null) => setState(prev => ({ ...prev, startLocation: loc, startId: loc?.id || '' }));
+    const setEndLocation = (loc: RouteNode | null) => setState(prev => ({ ...prev, endLocation: loc, endId: loc?.id || '' }));
+    const setAircraftDisplayMode = (mode: 'icon' | 'name' | 'path' | 'full') => setState(prev => ({ ...prev, aircraftDisplayMode: mode }));
+    const setRoutingPreference = (pref: 'fastest' | 'scenic' | 'balanced') => setState(prev => ({ ...prev, routingPreference: pref }));
+
+    const addWaypoint = (loc: RouteNode) => {
+        setState(prev => {
+            if (prev.waypoints.length >= 5) return prev;
+            return { ...prev, waypoints: [...prev.waypoints, loc] };
+        });
+    };
+    const removeWaypoint = (index: number) => {
+        setState(prev => ({
+            ...prev,
+            waypoints: prev.waypoints.filter((_, i) => i !== index)
+        }));
+    };
+    const reorderWaypoints = (from: number, to: number) => {
+        setState(prev => {
+            const wps = [...prev.waypoints];
+            const [moved] = wps.splice(from, 1);
+            wps.splice(to, 0, moved);
+            return { ...prev, waypoints: wps };
+        });
+    };
+    const clearWaypoints = () => setState(prev => ({ ...prev, waypoints: [] }));
     const setRouteNodes = (nodes: RouteNode[]) => setState(prev => ({ ...prev, routeNodes: nodes }));
     const setRoadGeometry = (geometry: RoadGeometry | null) =>
         setState(prev => ({ ...prev, roadGeometry: geometry }));
@@ -301,6 +425,12 @@ export const RouteProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             ...state,
             setStartId,
             setEndId,
+            setStartLocation,
+            setEndLocation,
+            addWaypoint,
+            removeWaypoint,
+            reorderWaypoints,
+            clearWaypoints,
             setRouteNodes,
             setRoadGeometry,
             setOptimalGeometry,
@@ -320,7 +450,26 @@ export const RouteProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             setVisualMode,
             setIsScope,
             setIsGrid,
-            setCamSettings
+            setCamSettings,
+            setAircraftDisplayMode,
+            setRoutingPreference,
+            setIsGlobeView: (isGlobe: boolean) => setState(prev => ({ ...prev, isGlobeView: isGlobe })),
+            setIsTrafficVisible: (isVisible: boolean) => setState(prev => ({ ...prev, isTrafficVisible: isVisible })),
+            setIsAircraftVisible: (isVisible: boolean) => setState(prev => ({ ...prev, isAircraftVisible: isVisible })),
+            setTrackedEntityId: (id: string | null) => setState(prev => ({ ...prev, trackedEntityId: id })),
+            setTrackedAircraftData: (data: RouteState['trackedAircraftData']) => setState(prev => ({ ...prev, trackedAircraftData: data })),
+            setTrafficStats: (stats: RouteState['trafficStats']) => setState(prev => ({ ...prev, trafficStats: stats })),
+            setTrainStats: (stats: RouteState['trainStats']) => setState(prev => ({ ...prev, trainStats: stats })),
+            setPersistAircraftTraffic: (v: boolean) => setState(prev => ({ ...prev, persistAircraftTraffic: v })),
+            setPersistVehicleTraffic: (v: boolean) => setState(prev => ({ ...prev, persistVehicleTraffic: v })),
+            setIsWebcamEnabled: (v: boolean) => setState(prev => ({ ...prev, isWebcamEnabled: v })),
+            setSearchWebcams: (results: WebcamData[]) => setState(prev => ({ ...prev, searchWebcams: results })),
+            setAttachedWebcam: (id: string, webcam: WebcamData | null) => setState(prev => {
+                const updated = { ...prev.attachedWebcams };
+                if (webcam) updated[id] = webcam;
+                else delete updated[id];
+                return { ...prev, attachedWebcams: updated };
+            }),
         }}>
             {children}
         </RouteContext.Provider>

@@ -18,7 +18,6 @@ const STATUS_MESSAGES = [
 const Preloader: React.FC<PreloaderProps> = ({ isReady }) => {
     const [statusIndex, setStatusIndex] = useState(0);
     const [shouldUnmount, setShouldUnmount] = useState(false);
-    const [minTimeElapsed, setMinTimeElapsed] = useState(false);
 
     useEffect(() => {
         const interval = setInterval(() => {
@@ -27,46 +26,28 @@ const Preloader: React.FC<PreloaderProps> = ({ isReady }) => {
         return () => clearInterval(interval);
     }, []);
 
-    // Ensure minimum display time of 3 seconds for cinematic feel
     useEffect(() => {
-        const timer = setTimeout(() => setMinTimeElapsed(true), 3000);
-        return () => clearTimeout(timer);
-    }, []);
-
-    useEffect(() => {
-        if (isReady && minTimeElapsed) {
+        if (isReady) {
             // Delay unmounting to allow for fade-out animation
             const timer = setTimeout(() => setShouldUnmount(true), 1200);
             return () => clearTimeout(timer);
         }
-    }, [isReady, minTimeElapsed]);
+    }, [isReady]);
 
     if (shouldUnmount) return null;
 
-    const isEffectivelyReady = isReady && minTimeElapsed;
-
     return (
-        <div className={`preloader-root ${isEffectivelyReady ? 'fade-out' : ''}`} aria-busy="true" role="status">
+        <div className={`preloader-root ${isReady ? 'fade-out' : ''}`} aria-busy="true" role="status">
             <div className="preloader-glass">
                 <div className="preloader-content">
                     <div className="radar-container">
                         <div className="radar-sweep"></div>
                         <div className="radar-rings"></div>
                         <div className="radar-core"></div>
-
-                        {/* Orbital Elements */}
-                        <div className="radar-blip blip-1"></div>
-                        <div className="radar-blip blip-2"></div>
-                        <div className="radar-satellite sat-1">
-                            <span className="sat-label">SAT-A1</span>
-                        </div>
-                        <div className="radar-satellite sat-2">
-                            <span className="sat-label">NW-45</span>
-                        </div>
                     </div>
 
                     <div className="preloader-text">
-                        <h1 className="preloader-title">NAVIFLY</h1>
+                        <h1 className="preloader-title">NAVIFLY <span className="v-tag">v2.0</span></h1>
                         <div className="status-container">
                             <span className="status-label">MISSION STATUS:</span>
                             <span className="status-message">{STATUS_MESSAGES[statusIndex]}</span>
