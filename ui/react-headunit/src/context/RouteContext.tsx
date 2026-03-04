@@ -12,6 +12,17 @@ export interface RouteNode {
     lon: number;
 }
 
+export interface WebcamData {
+    id: string;
+    title: string;
+    lat: number;
+    lon: number;
+    previewUrl?: string;
+    streamUrl?: string;
+    providerUrl?: string;
+    distance?: number;
+}
+
 interface AlternativeRoute {
     label?: string;
     geometry: [number, number][];
@@ -53,8 +64,29 @@ interface RouteState {
     isTrafficVisible: boolean;
     isAircraftVisible: boolean;
     trackedEntityId: string | null;
+    trackedAircraftData: {
+        callsign: string;
+        icao24: string;
+        altitude: number | null;
+        velocity: number | null;
+        heading: number | null;
+    } | null;
+    trafficStats: {
+        density: 'low' | 'medium' | 'high';
+        count: number;
+        avgSpeed: number;
+    } | null;
+    trainStats: {
+        activeTrains: number;
+        nextStation: string;
+    } | null;
     aircraftDisplayMode: 'icon' | 'name' | 'path' | 'full';
     routingPreference: 'fastest' | 'scenic' | 'balanced';
+    persistAircraftTraffic: boolean;
+    persistVehicleTraffic: boolean;
+    isWebcamEnabled: boolean;
+    searchWebcams: WebcamData[];
+    attachedWebcams: Record<string, WebcamData>; // taskId or entityId -> webcam
 }
 
 interface RouteContextType extends RouteState {
@@ -90,8 +122,16 @@ interface RouteContextType extends RouteState {
     setIsTrafficVisible: (isVisible: boolean) => void;
     setIsAircraftVisible: (isVisible: boolean) => void;
     setTrackedEntityId: (id: string | null) => void;
+    setTrackedAircraftData: (data: RouteState['trackedAircraftData']) => void;
+    setTrafficStats: (stats: RouteState['trafficStats']) => void;
+    setTrainStats: (stats: RouteState['trainStats']) => void;
     setAircraftDisplayMode: (mode: 'icon' | 'name' | 'path' | 'full') => void;
     setRoutingPreference: (pref: 'fastest' | 'scenic' | 'balanced') => void;
+    setPersistAircraftTraffic: (v: boolean) => void;
+    setPersistVehicleTraffic: (v: boolean) => void;
+    setIsWebcamEnabled: (v: boolean) => void;
+    setSearchWebcams: (results: WebcamData[]) => void;
+    setAttachedWebcam: (id: string, webcam: WebcamData | null) => void;
 }
 
 const STORAGE_KEY = 'navifly-route-state';
@@ -125,10 +165,18 @@ const defaultState: RouteState = {
     },
     isGlobeView: false,
     isTrafficVisible: false,
-    isAircraftVisible: true,
+    isAircraftVisible: false,
     trackedEntityId: null,
+    trackedAircraftData: null,
+    trafficStats: null,
+    trainStats: null,
     aircraftDisplayMode: 'icon',
-    routingPreference: 'balanced'
+    routingPreference: 'balanced',
+    persistAircraftTraffic: false,
+    persistVehicleTraffic: false,
+    isWebcamEnabled: false,
+    searchWebcams: [],
+    attachedWebcams: {},
 };
 
 const RouteContext = createContext<RouteContextType | undefined>(undefined);
@@ -408,7 +456,20 @@ export const RouteProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             setIsGlobeView: (isGlobe: boolean) => setState(prev => ({ ...prev, isGlobeView: isGlobe })),
             setIsTrafficVisible: (isVisible: boolean) => setState(prev => ({ ...prev, isTrafficVisible: isVisible })),
             setIsAircraftVisible: (isVisible: boolean) => setState(prev => ({ ...prev, isAircraftVisible: isVisible })),
-            setTrackedEntityId: (id: string | null) => setState(prev => ({ ...prev, trackedEntityId: id }))
+            setTrackedEntityId: (id: string | null) => setState(prev => ({ ...prev, trackedEntityId: id })),
+            setTrackedAircraftData: (data: RouteState['trackedAircraftData']) => setState(prev => ({ ...prev, trackedAircraftData: data })),
+            setTrafficStats: (stats: RouteState['trafficStats']) => setState(prev => ({ ...prev, trafficStats: stats })),
+            setTrainStats: (stats: RouteState['trainStats']) => setState(prev => ({ ...prev, trainStats: stats })),
+            setPersistAircraftTraffic: (v: boolean) => setState(prev => ({ ...prev, persistAircraftTraffic: v })),
+            setPersistVehicleTraffic: (v: boolean) => setState(prev => ({ ...prev, persistVehicleTraffic: v })),
+            setIsWebcamEnabled: (v: boolean) => setState(prev => ({ ...prev, isWebcamEnabled: v })),
+            setSearchWebcams: (results: WebcamData[]) => setState(prev => ({ ...prev, searchWebcams: results })),
+            setAttachedWebcam: (id: string, webcam: WebcamData | null) => setState(prev => {
+                const updated = { ...prev.attachedWebcams };
+                if (webcam) updated[id] = webcam;
+                else delete updated[id];
+                return { ...prev, attachedWebcams: updated };
+            }),
         }}>
             {children}
         </RouteContext.Provider>

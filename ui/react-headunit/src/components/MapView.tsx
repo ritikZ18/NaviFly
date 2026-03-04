@@ -30,6 +30,7 @@ const MapView: React.FC<MapProps> = ({ onLoaded }) => {
     const endMarkerRef = useRef<maplibregl.Marker | null>(null);
     const vehicleMarkerRef = useRef<maplibregl.Marker | null>(null);
     const globeAnimRef = useRef<number | null>(null);
+    const webcamMarkersRef = useRef<maplibregl.Marker[]>([]);
     // Aircraft: keyed by ICAO24 → { marker, trail positions }
     type AircraftEntry = { marker: maplibregl.Marker; trail: [number, number][] };
     const aircraftMarkersRef = useRef<globalThis.Map<string, AircraftEntry>>(new globalThis.Map());
@@ -47,7 +48,9 @@ const MapView: React.FC<MapProps> = ({ onLoaded }) => {
         isNavigating, simulation, vehicle, selectRoute, setRoadGeometry, setOptimalGeometry, setAlternativeRoutes,
         isStartingNavigation, isTracking, isScope, camSettings, waypoints,
         isGlobeView, isTrafficVisible, isAircraftVisible, trackedEntityId, setIsGlobeView,
-        aircraftDisplayMode, setTrackedEntityId
+        aircraftDisplayMode, setTrackedEntityId, setTrackedAircraftData, setTrafficStats,
+        persistVehicleTraffic, persistAircraftTraffic,
+        isWebcamEnabled, searchWebcams, attachedWebcams, setAttachedWebcam
     } = useRoute();
 
     const hasFetchedLocations = useRef(false);
@@ -112,15 +115,6 @@ const MapView: React.FC<MapProps> = ({ onLoaded }) => {
                         tileSize: 256,
                         maxzoom: 18,
                         attribution: '© Esri, Maxar, Earthstar Geographics'
-                    },
-                    // TomTom Live Traffic Flow tiles (real road congestion)
-                    'tomtom-flow': {
-                        type: 'raster',
-                        tiles: TOMTOM_KEY
-                            ? [`https://api.tomtom.com/maps/orbis/traffic/tile/flow/{z}/{x}/{y}.png?apiVersion=1&key=${TOMTOM_KEY}&style=relative-delay&tileSize=256`]
-                            : [],
-                        tileSize: 256,
-                        attribution: '© TomTom'
                     }
                 },
                 layers: [
@@ -138,15 +132,6 @@ const MapView: React.FC<MapProps> = ({ onLoaded }) => {
                         minzoom: 0,
                         maxzoom: 19,
                         layout: { visibility: 'none' }
-                    },
-                    {
-                        id: 'tomtom-flow',
-                        type: 'raster',
-                        source: 'tomtom-flow',
-                        minzoom: 0,
-                        maxzoom: 22,
-                        layout: { visibility: 'none' },
-                        paint: { 'raster-opacity': 0.82 }
                     }
                 ]
             },
@@ -154,8 +139,6 @@ const MapView: React.FC<MapProps> = ({ onLoaded }) => {
             zoom: 6,
         });
 
-        map.current.addControl(new maplibregl.NavigationControl(), 'top-right');
-        map.current.addControl(new maplibregl.ScaleControl({ maxWidth: 100 }), 'bottom-right');
 
         map.current.on('load', () => {
             setMapLoaded(true);
@@ -187,21 +170,52 @@ const MapView: React.FC<MapProps> = ({ onLoaded }) => {
                     });
                 }
 
-                // Aircraft trail source (GeoJSON LineString per aircraft)
+                // ── Aircraft trail: split into COMPLETED (dashed green) + REMAINING (solid purple) ──
                 map.current.addSource('aircraft-trail', {
                     type: 'geojson',
                     data: { type: 'FeatureCollection', features: [] }
                 });
+                // Single-aircraft "all trail" layer — kept for non-tracked aircraft (colored by property)
                 map.current.addLayer({
                     id: 'aircraft-trail',
                     type: 'line',
                     source: 'aircraft-trail',
-                    layout: { visibility: 'none' },
+                    filter: ['!', ['has', 'segment']],   // untracked aircraft only
+                    layout: { 'line-join': 'round', 'line-cap': 'round', visibility: 'none' },
                     paint: {
-                        'line-color': ['get', 'color'],
-                        'line-width': 1.5,
-                        'line-opacity': 0.6,
-                        'line-dasharray': [3, 2],
+                        'line-color': ['coalesce', ['get', 'color'], '#60a5fa'],
+                        'line-width': 2,
+                        'line-opacity': 0.75,
+                        'line-dasharray': [3, 3],
+                    }
+                });
+
+                // Completed portion — dashed green
+                map.current.addLayer({
+                    id: 'aircraft-trail-completed',
+                    type: 'line',
+                    source: 'aircraft-trail',
+                    filter: ['==', ['get', 'segment'], 'completed'],
+                    layout: { 'line-join': 'round', 'line-cap': 'round', visibility: 'none' },
+                    paint: {
+                        'line-color': '#22c55e',
+                        'line-width': 2.5,
+                        'line-opacity': 0.9,
+                        'line-dasharray': [4, 3],
+                    }
+                });
+
+                // Remaining portion — solid purple
+                map.current.addLayer({
+                    id: 'aircraft-trail-remaining',
+                    type: 'line',
+                    source: 'aircraft-trail',
+                    filter: ['==', ['get', 'segment'], 'remaining'],
+                    layout: { 'line-join': 'round', 'line-cap': 'round', visibility: 'none' },
+                    paint: {
+                        'line-color': '#a855f7',
+                        'line-width': 2.5,
+                        'line-opacity': 0.9,
                     }
                 });
 
@@ -225,26 +239,24 @@ const MapView: React.FC<MapProps> = ({ onLoaded }) => {
                     }
                 });
 
-                // Add 3D Terrain source (AWS Terrain Tiles — free, no key required)
-                map.current.addSource('terrain-dem', {
-                    type: 'raster-dem',
-                    url: 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png',
-                    tileSize: 256,
-                    encoding: 'terrarium'
-                });
-
-                // Sky layer for atmosphere effect when terrain is active
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                map.current.addLayer({
-                    id: 'sky',
-                    type: 'sky' as any,
-                    paint: {
-                        'sky-type': 'atmosphere',
-                        'sky-atmosphere-sun': [0.0, 90.0],
-                        'sky-atmosphere-sun-intensity': 15
-                    } as any,
-                    layout: { visibility: 'none' }
-                });
+                // TomTom Traffic Flow — add dynamically (only if key available)
+                if (TOMTOM_KEY) {
+                    map.current.addSource('tomtom-flow', {
+                        type: 'raster',
+                        tiles: [`https://api.tomtom.com/maps/orbis/traffic/tile/flow/{z}/{x}/{y}.png?apiVersion=1&key=${TOMTOM_KEY}&style=relative-delay&tileSize=256`],
+                        tileSize: 256,
+                        attribution: '© TomTom'
+                    });
+                    map.current.addLayer({
+                        id: 'tomtom-flow',
+                        type: 'raster',
+                        source: 'tomtom-flow',
+                        minzoom: 0,
+                        maxzoom: 22,
+                        layout: { visibility: 'none' },
+                        paint: { 'raster-opacity': 0.82 }
+                    });
+                }
 
                 // Road Traffic Cars source + symbol layer
                 map.current.addSource('road-cars', {
@@ -264,17 +276,37 @@ const MapView: React.FC<MapProps> = ({ onLoaded }) => {
                             14, 7
                         ],
                         'circle-color': [
-                            'match',
-                            ['get', 'density'],
-                            'low', '#22c55e',
-                            'medium', '#f59e0b',
-                            'high', '#ef4444',
+                            'step',
+                            ['get', 'speed'],
+                            '#ef4444', 20,
+                            '#f59e0b', 45,
                             '#22c55e'
                         ],
                         'circle-opacity': 0.85,
                         'circle-stroke-width': 1.5,
                         'circle-stroke-color': 'rgba(255,255,255,0.6)'
                     }
+                });
+
+                // 3D Terrain source (free AWS Elevation tiles — no key needed)
+                map.current.addSource('terrain-dem', {
+                    type: 'raster-dem',
+                    url: 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png',
+                    tileSize: 256,
+                    encoding: 'terrarium'
+                });
+
+                // Sky layer for atmosphere when 3D is active
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                map.current.addLayer({
+                    id: 'sky',
+                    type: 'sky' as any,
+                    paint: {
+                        'sky-type': 'atmosphere',
+                        'sky-atmosphere-sun': [0.0, 90.0],
+                        'sky-atmosphere-sun-intensity': 15
+                    } as any,
+                    layout: { visibility: 'none' }
                 });
 
                 routesInitialized.current = true;
@@ -768,7 +800,9 @@ const MapView: React.FC<MapProps> = ({ onLoaded }) => {
         }
 
         // Show live flow tile overlay
-        map.current.setLayoutProperty('tomtom-flow', 'visibility', 'visible');
+        if (map.current.getLayer('tomtom-flow')) {
+            map.current.setLayoutProperty('tomtom-flow', 'visibility', 'visible');
+        }
 
         // Fetch TomTom Traffic Incidents for Arizona bounding box
         const fetchIncidents = async () => {
@@ -861,27 +895,21 @@ const MapView: React.FC<MapProps> = ({ onLoaded }) => {
     useEffect(() => {
         if (!map.current || !mapLoaded) return;
 
-        // Clear markers when traffic or aircraft layer turned off
-        if (!isTrafficVisible || !isAircraftVisible) {
+        // Clear markers when BOTH tracking flags are off
+        if (!isAircraftVisible && !persistAircraftTraffic) {
             aircraftMarkersRef.current.forEach(({ marker }) => marker.remove());
             aircraftMarkersRef.current.clear();
             const trailSrc = map.current.getSource('aircraft-trail') as maplibregl.GeoJSONSource;
             if (trailSrc) trailSrc.setData({ type: 'FeatureCollection', features: [] });
-            if (map.current.getLayer('aircraft-trail')) {
-                map.current.setLayoutProperty('aircraft-trail', 'visibility', 'none');
-            }
-            if (map.current.getLayer('aircraft-trail-labels')) {
-                map.current.setLayoutProperty('aircraft-trail-labels', 'visibility', 'none');
-            }
+            ['aircraft-trail', 'aircraft-trail-completed', 'aircraft-trail-remaining', 'aircraft-trail-labels'].forEach(id => {
+                if (map.current!.getLayer(id)) map.current!.setLayoutProperty(id, 'visibility', 'none');
+            });
             return;
         }
 
-        if (map.current.getLayer('aircraft-trail')) {
-            map.current.setLayoutProperty('aircraft-trail', 'visibility', 'visible');
-        }
-        if (map.current.getLayer('aircraft-trail-labels')) {
-            map.current.setLayoutProperty('aircraft-trail-labels', 'visibility', 'visible');
-        }
+        ['aircraft-trail', 'aircraft-trail-completed', 'aircraft-trail-remaining', 'aircraft-trail-labels'].forEach(id => {
+            if (map.current!.getLayer(id)) map.current!.setLayoutProperty(id, 'visibility', 'visible');
+        });
 
         // Route bbox for traffic-in-route detection
         let routeBbox: [number, number, number, number] | null = null;
@@ -912,7 +940,7 @@ const MapView: React.FC<MapProps> = ({ onLoaded }) => {
         const fetchAircraftData = async () => {
             try {
                 const response = await fetch(
-                    'https://opensky-network.org/api/states/all?lamin=31.0&lomin=-115.0&lamax=37.0&lomax=-109.0'
+                    'http://localhost:8081/api/traffic/aircraft'
                 );
                 if (!response.ok) return;
                 const data = await response.json();
@@ -991,6 +1019,13 @@ const MapView: React.FC<MapProps> = ({ onLoaded }) => {
                         if (isTracked) {
                             el.classList.add('aircraft-tracked');
                             map.current?.easeTo({ center: [lon, lat], duration: 1000 });
+                            setTrackedAircraftData({
+                                icao24,
+                                callsign,
+                                altitude,
+                                velocity,
+                                heading
+                            });
                         } else {
                             el.classList.remove('aircraft-tracked');
                         }
@@ -1019,6 +1054,13 @@ const MapView: React.FC<MapProps> = ({ onLoaded }) => {
                         // Click → track this aircraft
                         el.addEventListener('click', () => {
                             (window as any).__naviflySetTrackedEntityId?.(icao24);
+                            setTrackedAircraftData({
+                                icao24,
+                                callsign,
+                                altitude,
+                                velocity,
+                                heading
+                            });
                             pushToast({
                                 type: 'info',
                                 icon: '✈️',
@@ -1052,25 +1094,50 @@ const MapView: React.FC<MapProps> = ({ onLoaded }) => {
 
                     // Show trail based on preference or zoom
                     const effectiveShowTrail = showTrail || (zoom >= 7 && trail.length >= 2);
-                    if (effectiveShowTrail && trail.length >= 2) {
-                        trailFeatures.push({
-                            type: 'Feature',
-                            id: icao24,
-                            properties: { color: isTracked ? '#facc15' : '#60a5fa' },
-                            geometry: { type: 'LineString', coordinates: trail }
-                        });
+                    if (effectiveShowTrail) {
+                        if (isTracked && trail.length >= 1) {
+                            // ── Tracked aircraft: completed = historical trail (dashed green) ──
+                            if (trail.length >= 2) {
+                                trailFeatures.push({
+                                    type: 'Feature',
+                                    properties: { segment: 'completed' },
+                                    geometry: { type: 'LineString', coordinates: trail }
+                                });
+                            }
 
-                        // Add Start/End labels for tracked path
-                        if (isTracked) {
+                            // ── Remaining = project ahead ~0.5° along heading (solid purple) ──
+                            const RAD = Math.PI / 180;
+                            const dist = 0.6; // degrees projection
+                            const projected: [number, number] = [
+                                lon + dist * Math.sin(heading * RAD),
+                                lat + dist * Math.cos(heading * RAD)
+                            ];
                             trailFeatures.push({
                                 type: 'Feature',
-                                properties: { label: 'DEPARTURE', color: '#facc15' },
-                                geometry: { type: 'Point', coordinates: trail[0] }
+                                properties: { segment: 'remaining' },
+                                geometry: { type: 'LineString', coordinates: [[lon, lat], projected] }
                             });
+
+                            // Labels
+                            if (trail.length >= 2) {
+                                trailFeatures.push({
+                                    type: 'Feature',
+                                    properties: { label: 'DEPARTURE' },
+                                    geometry: { type: 'Point', coordinates: trail[0] }
+                                });
+                            }
                             trailFeatures.push({
                                 type: 'Feature',
-                                properties: { label: 'CURRENT', color: '#facc15' },
+                                properties: { label: 'CURRENT' },
                                 geometry: { type: 'Point', coordinates: [lon, lat] }
+                            });
+                        } else if (!isTracked && trail.length >= 2) {
+                            // Untracked: simple blue dashed trail (no segment property)
+                            trailFeatures.push({
+                                type: 'Feature',
+                                id: icao24,
+                                properties: { color: '#60a5fa' },
+                                geometry: { type: 'LineString', coordinates: trail }
                             });
                         }
                     }
@@ -1083,6 +1150,11 @@ const MapView: React.FC<MapProps> = ({ onLoaded }) => {
                         aircraftMarkersRef.current.delete(id);
                     }
                 });
+
+                // Publish traffic stats to context (aircraft count as air-traffic density)
+                const count = aircraftMarkersRef.current.size;
+                const density: 'low' | 'medium' | 'high' = count < 5 ? 'low' : count < 15 ? 'medium' : 'high';
+                setTrafficStats({ density, count, avgSpeed: 0 });
 
                 // Update trail source
                 const trailSrc = map.current?.getSource('aircraft-trail') as maplibregl.GeoJSONSource;
@@ -1109,7 +1181,7 @@ const MapView: React.FC<MapProps> = ({ onLoaded }) => {
             aircraftMarkersRef.current.forEach(({ marker }) => marker.remove());
             aircraftMarkersRef.current.clear();
         };
-    }, [isTrafficVisible, isAircraftVisible, mapLoaded, trackedEntityId, roadGeometry, aircraftDisplayMode]);
+    }, [isTrafficVisible, isAircraftVisible, persistAircraftTraffic, mapLoaded, trackedEntityId, roadGeometry, aircraftDisplayMode]);
 
     // ── Moving Car Traffic Animation ──────────────────────────────────────────
     useEffect(() => {
@@ -1227,6 +1299,75 @@ const MapView: React.FC<MapProps> = ({ onLoaded }) => {
         };
     }, [isTrafficVisible, mapLoaded]);
 
+    // ── Live Telemetry Vehicle Positions → road-cars GeoJSON circle layer ────────────────────
+    // Updates the MapLibre 'road-cars' circle source directly (no DOM markers = no flicker)
+    useEffect(() => {
+        const shouldShow = isTrafficVisible || persistVehicleTraffic;
+
+        if (!map.current || !mapLoaded) return;
+
+        const carSrc = map.current.getSource('road-cars') as maplibregl.GeoJSONSource | undefined;
+        if (!carSrc) return;
+
+        // Hide circle layer when both flags are off
+        if (!shouldShow) {
+            carSrc.setData({ type: 'FeatureCollection', features: [] });
+            if (map.current.getLayer('road-cars')) map.current.setLayoutProperty('road-cars', 'visibility', 'none');
+            return;
+        }
+
+        if (map.current.getLayer('road-cars')) map.current.setLayoutProperty('road-cars', 'visibility', 'visible');
+
+        const TELEMETRY_URL = 'http://localhost:8081/vehicles';
+
+        const fetchLiveVehicles = async () => {
+            try {
+                const res = await fetch(TELEMETRY_URL, { signal: AbortSignal.timeout(3000) });
+                if (!res.ok) return;
+                const vehicles: { vehicle_id: string; lat: number; lon: number; speed: number; heading: number }[] = await res.json();
+
+                if (!map.current) return;
+                const src = map.current.getSource('road-cars') as maplibregl.GeoJSONSource | undefined;
+                if (!src) return;
+
+                // Calculate density once
+                const count = vehicles.length;
+                const density: 'low' | 'medium' | 'high' = count < 3 ? 'low' : count < 8 ? 'medium' : 'high';
+
+                // Push GeoJSON features directly — MapLibre handles the diff rendering (no flicker)
+                src.setData({
+                    type: 'FeatureCollection',
+                    features: vehicles.map(v => ({
+                        type: 'Feature',
+                        properties: {
+                            id: v.vehicle_id,
+                            speed: v.speed,
+                            heading: v.heading,
+                            density,
+                        },
+                        geometry: { type: 'Point', coordinates: [v.lon, v.lat] }
+                    }))
+                });
+
+                const avgSpeed = vehicles.length > 0
+                    ? Math.round(vehicles.reduce((a, v) => a + v.speed, 0) / vehicles.length)
+                    : 0;
+                setTrafficStats({ density, count, avgSpeed });
+
+            } catch {
+                // Telemetry offline — road-cars layer keeps last known positions until next tick
+            }
+        };
+
+        fetchLiveVehicles();
+        const interval = setInterval(fetchLiveVehicles, 3000);
+
+        return () => {
+            clearInterval(interval);
+            // Don't clear the source on cleanup — let it linger until flags change
+        };
+    }, [isTrafficVisible, persistVehicleTraffic, mapLoaded, setTrafficStats]);
+
     const breakMarkersRef = useRef<maplibregl.Marker[]>([]);
 
     useEffect(() => {
@@ -1258,6 +1399,71 @@ const MapView: React.FC<MapProps> = ({ onLoaded }) => {
             breakMarkersRef.current = [];
         }
     }, [simulation.breakPoints, simulation.isRunning, mapLoaded]);
+
+    // Manage Webcam Markers
+    useEffect(() => {
+        if (!map.current || !mapLoaded) return;
+
+        // Clear existing webcam markers
+        webcamMarkersRef.current.forEach(m => m.remove());
+        webcamMarkersRef.current = [];
+
+        // Determine which webcams to show
+        // We show all search results if enabled, 
+        // PLUS any attached webcams even if toggle is off (to keep focus)
+        const toShow = new globalThis.Map<string, any>();
+
+        if (isWebcamEnabled) {
+            searchWebcams.forEach(w => toShow.set(w.id, w));
+        }
+
+        // Always show attached ones
+        Object.values(attachedWebcams).forEach(aw => toShow.set(aw.id, aw));
+
+        toShow.forEach((w) => {
+            const el = document.createElement('div');
+            el.className = 'webcam-marker';
+
+            const isAttached = Object.values(attachedWebcams).some(aw => aw.id === w.id);
+
+            el.innerHTML = `
+                <div class="webcam-marker-icon ${isAttached ? 'attached' : ''}">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M23 7l-7 5 7 5V7z"></path><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
+                </div>
+            `;
+
+            const popupNode = document.createElement('div');
+            popupNode.className = 'webcam-popup';
+            popupNode.innerHTML = `
+                <h3>${w.title}</h3>
+                <div class="webcam-popup-preview">
+                    ${w.previewUrl ? `<img src="${w.previewUrl}" alt="" />` : '<div class="no-preview">NO SIGNAL</div>'}
+                </div>
+                <div class="webcam-popup-actions">
+                    <button class="popup-attach-btn">${isAttached ? 'DETACH' : 'ATTACH'}</button>
+                    <a href="${w.providerUrl}" target="_blank" class="popup-link">OPEN STREAM</a>
+                </div>
+            `;
+
+            // Attach event listener to the button inside the popup
+            const attachBtn = popupNode.querySelector('.popup-attach-btn');
+            attachBtn?.addEventListener('click', () => {
+                if (isAttached) {
+                    setAttachedWebcam('ops-1', null);
+                } else {
+                    setAttachedWebcam('ops-1', w);
+                }
+            });
+
+            const marker = new maplibregl.Marker({ element: el })
+                .setLngLat([w.lon, w.lat])
+                .setPopup(new maplibregl.Popup({ offset: 15, className: 'webcam-popup' }).setDOMContent(popupNode))
+                .addTo(map.current!);
+
+            webcamMarkersRef.current.push(marker);
+        });
+
+    }, [mapLoaded, isWebcamEnabled, searchWebcams, attachedWebcams, setAttachedWebcam]);
 
     return (
         <div className="map-view-root">

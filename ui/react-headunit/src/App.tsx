@@ -5,9 +5,12 @@ import Preloader from './components/Preloader'
 import TelemetryPanel from './components/TelemetryPanel'
 import Toast, { useToastManager } from './components/Toast'
 import AircraftControlHUD from './components/AircraftControlHUD'
+import VehicleControlHUD from './components/VehicleControlHUD'
+import TacticalInfoPanes from './components/TacticalInfoPanes'
 import { RouteProvider, useRoute } from './context/RouteContext'
 import { TelemetryProvider } from './context/TelemetryContext'
-import { Maximize, Target, Grid3X3, Settings } from 'lucide-react'
+import { Maximize, Target, Grid3X3, Settings, Video } from 'lucide-react'
+import WebcamSearch from './components/WebcamSearch'
 import './index.css'
 
 function HeadUnit() {
@@ -28,7 +31,8 @@ function HeadUnit() {
     setIsScope,
     setIsGrid,
     setCamSettings,
-    isTrafficVisible
+    isTrafficVisible,
+    isWebcamEnabled, setIsWebcamEnabled
   } = useRoute();
 
   useEffect(() => {
@@ -104,6 +108,16 @@ function HeadUnit() {
                 </select>
               </div>
 
+              <div className="hud-row">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Video size={14} />
+                  <span>Webcam Discovery</span>
+                </div>
+                <input type="checkbox" checked={isWebcamEnabled} onChange={(e) => setIsWebcamEnabled(e.target.checked)} />
+              </div>
+
+              <WebcamSearch />
+
               {isCamOn && (
                 <div className="hud-settings-group">
                   <div className="hud-row-slider">
@@ -150,6 +164,9 @@ function HeadUnit() {
               )}
             </div>
           </div>
+
+          {/* Tactical Info Panes — below HUD cluster */}
+          <TacticalInfoPanes />
         </div>
 
         {/* Ops / Scope Overlays */}
@@ -197,6 +214,9 @@ function HeadUnit() {
 
         {/* Floating Aircraft Tracking HUD */}
         <AircraftControlHUD />
+
+        {/* Floating Vehicle Traffic HUD */}
+        <VehicleControlHUD />
 
         {/* Toast notifications */}
         <Toast toasts={toasts} onDismiss={dismiss} />

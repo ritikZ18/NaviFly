@@ -282,11 +282,16 @@ const NavigationPanel: React.FC = () => {
                                 {isFindingRoute ? 'Finding Route...' : isRouteConfirmed ? '✓ Route Found — Recalculate' : 'FIND ROUTE'}
                             </button>
                         )}
+                        {/* Route Select Cards — shown after FIND ROUTE, before START NAVIGATION */}
+                        {isRouteConfirmed && !isNavigating && (
+                            <RouteOptions />
+                        )}
+
                     </>
                 )}
             </div>
 
-            {/* Route Selection Cards (Stage 1) */}
+            {/* Route Selection Cards during active navigation */}
             {isNavigating && <RouteOptions />}
 
             {/* Vehicle Selector */}

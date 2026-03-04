@@ -1890,9 +1890,11 @@ select.location-dropdown {
 
 .hud-cluster {
   display: flex;
-  flex-direction: column;
-  gap: 10px;
+  flex-direction: row;
+  gap: 8px;
   pointer-events: auto;
+  flex-wrap: nowrap;
+  align-items: center;
 }
 
 .hud-btn {
@@ -2454,11 +2456,69 @@ select.location-dropdown {
   width: 280px;
   height: 280px;
   border-radius: 50%;
+  overflow: hidden;
   background:
     radial-gradient(circle at center, rgba(0, 255, 180, 0.10) 0 18%, rgba(0, 255, 180, 0.06) 18% 45%, transparent 45%),
     radial-gradient(circle at center, rgba(0, 255, 180, 0.06), transparent 60%);
   border: 1px solid rgba(0, 255, 180, 0.18);
   box-shadow: 0 0 40px rgba(0, 255, 180, 0.10) inset, 0 0 40px rgba(0, 255, 180, 0.08);
+}
+
+
+
+.radar-container::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 50%,
+      rgba(0, 255, 180, 0.10) 0%,
+      rgba(0, 255, 180, 0.05) 35%,
+      rgba(0, 0, 0, 0) 70%);
+  mix-blend-mode: screen;
+  animation: phosphor 1.6s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 2;
+}
+
+@keyframes phosphor {
+
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+
+  50% {
+    opacity: 0.75;
+  }
+}
+
+
+.radar-container::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 50%,
+      rgba(0, 255, 180, 0.10) 0%,
+      rgba(0, 255, 180, 0.05) 35%,
+      rgba(0, 0, 0, 0) 70%);
+  mix-blend-mode: screen;
+  animation: phosphor 1.6s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 2;
+}
+
+@keyframes phosphor {
+
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+
+  50% {
+    opacity: 0.75;
+  }
 }
 
 .radar-sweep {
@@ -2467,8 +2527,9 @@ select.location-dropdown {
   border-radius: 50%;
   overflow: hidden;
   z-index: 3;
-  animation: sweepRotate 3.2s linear infinite;
+  animation: sweepRotate 3.2s linear infinite !important;
   transform-origin: 50% 50%;
+  animation-duration: 3.2s;
 }
 
 .radar-sweep::before {
@@ -2479,7 +2540,7 @@ select.location-dropdown {
   width: 50%;
   height: 2px;
   transform-origin: 0% 50%;
-  transform: translateY(-50%) rotate(0deg);
+  transform: translateY(-50%);
   background: linear-gradient(90deg, transparent 0%, rgba(0, 255, 180, 0.25) 15%, rgba(0, 255, 180, 0.95) 100%);
   box-shadow: 0 0 14px rgba(0, 255, 180, 0.65);
 }
@@ -2487,11 +2548,22 @@ select.location-dropdown {
 .radar-sweep::after {
   content: "";
   position: absolute;
-  inset: -35%;
+  inset: -40%;
   border-radius: 50%;
-  background: conic-gradient(from 0deg, transparent 0deg, transparent 25deg, rgba(0, 255, 180, 0.10) 45deg, transparent 360deg);
-  opacity: 0.8;
-  filter: blur(0.2px);
+
+  /* Wide cone that starts bright at the line and fades out */
+  background: conic-gradient(from -28deg,
+      /* centers cone on the line */
+      rgba(0, 255, 180, 0.38) 0deg,
+      /* brightest at the line */
+      rgba(0, 255, 180, 0.18) 18deg,
+      rgba(0, 255, 180, 0.06) 42deg,
+      rgba(0, 255, 180, 0.0) 70deg,
+      /* cone width end */
+      rgba(0, 255, 180, 0.0) 360deg);
+
+  opacity: 0.95;
+  filter: blur(0.9px);
 }
 
 .radar-rings {
@@ -2537,6 +2609,16 @@ select.location-dropdown {
   pointer-events: none;
   z-index: 5;
 }
+
+/* GPU optimization */
+.radar-sweep,
+.radar-orbit,
+.loading-bar-fill,
+.preloader-scanline {
+  will-change: transform;
+}
+
+
 
 .orbit-1 {
   animation-duration: 5.5s;
@@ -2678,27 +2760,44 @@ select.location-dropdown {
 .loading-bar-container {
   margin-top: 12px;
   width: 100%;
-  height: 4px;
+  height: 5px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 255, 180, 0.08);
+  border: 1px solid rgba(0, 255, 180, 0.14);
   overflow: hidden;
 }
 
 .loading-bar-fill {
   height: 100%;
-  width: 40%;
-  background: linear-gradient(90deg, transparent, rgba(0, 255, 180, 0.6), transparent);
-  animation: loadmove 1.5s ease-in-out infinite;
+  width: 100%;
+  background: linear-gradient(90deg,
+      transparent 0%,
+      rgba(0, 255, 180, 0.5) 30%,
+      rgba(0, 255, 180, 1.0) 60%,
+      rgba(0, 255, 180, 0.5) 100%);
+  transform-origin: left center;
+  animation: loadFill 3.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
-@keyframes loadmove {
+@keyframes loadFill {
   0% {
-    transform: translateX(-150%);
+    transform: scaleX(0);
+    opacity: 0.6;
+  }
+
+  60% {
+    transform: scaleX(0.75);
+    opacity: 1;
+  }
+
+  90% {
+    transform: scaleX(0.95);
+    opacity: 1;
   }
 
   100% {
-    transform: translateX(350%);
+    transform: scaleX(1);
+    opacity: 1;
   }
 }
 
@@ -3728,6 +3827,17 @@ select.location-dropdown {
   animation: slideInRight 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+/* Vehicle HUD floater — offset below aircraft panel */
+.vehicle-hud-overlay {
+  top: 400px !important;
+}
+
+/* Mini-toggle for vehicle panel offset below aircraft mini-toggle */
+.vehicle-hud-overlay.mini-hud-toggle,
+.vehicle-mini-toggle {
+  top: 160px !important;
+}
+
 .mini-hud-toggle {
   position: absolute;
   top: 100px;
@@ -3889,4 +3999,508 @@ select.location-dropdown {
     transform: translateX(0);
     opacity: 1;
   }
+}
+
+/* ── Tactical Info Panes Row ───────────────────────────────────────────────── */
+.tac-panes-row {
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+  margin-top: 10px;
+  pointer-events: auto;
+  flex-wrap: wrap;
+}
+
+.tac-pane {
+  min-width: 160px;
+  max-width: 220px;
+  background: rgba(10, 10, 14, 0.88);
+  backdrop-filter: blur(14px);
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  padding: 10px 12px;
+  animation: tac-slide-in 0.25s ease both;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+  font-family: 'Inter', sans-serif;
+}
+
+.tac-pane--aircraft {
+  border-color: rgba(96, 165, 250, 0.35);
+}
+
+.tac-pane--traffic {
+  border-color: rgba(251, 191, 36, 0.3);
+}
+
+.tac-pane--train {
+  border-color: rgba(110, 231, 183, 0.3);
+}
+
+.tac-pane__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.tac-pane__icon-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.tac-pane--aircraft .tac-pane__icon-title {
+  color: #60a5fa;
+}
+
+.tac-pane--traffic .tac-pane__icon-title {
+  color: #fbbf24;
+}
+
+.tac-pane--train .tac-pane__icon-title {
+  color: #6ee7b7;
+}
+
+.tac-pane__title {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.tac-pane__close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.4);
+  padding: 2px;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  transition: color 0.15s;
+}
+
+.tac-pane__close:hover {
+  color: #fff;
+}
+
+.tac-pane__callsign {
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 0.04em;
+  margin-bottom: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tac-pane__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px 8px;
+  margin-bottom: 8px;
+}
+
+.tac-pane__stat {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.tac-pane__stat-label {
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.38);
+}
+
+.tac-pane__stat-value {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.tac-pane__stat-value.mono {
+  font-family: 'Courier New', monospace;
+  letter-spacing: 0.05em;
+  color: #60a5fa;
+}
+
+.tac-pane__trail-legend {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.trail-dot {
+  display: inline-block;
+  width: 10px;
+  height: 3px;
+  border-radius: 2px;
+  vertical-align: middle;
+}
+
+.trail-dot--yellow {
+  background: #facc15;
+}
+
+.trail-dot--green {
+  background: #4ade80;
+}
+
+.tac-pane__density {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  margin-bottom: 8px;
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+.density--low {
+  background: rgba(74, 222, 128, 0.15);
+  color: #4ade80;
+}
+
+.density--medium {
+  background: rgba(251, 191, 36, 0.15);
+  color: #fbbf24;
+}
+
+.density--high {
+  background: rgba(248, 113, 113, 0.15);
+  color: #f87171;
+}
+
+.tac-pane__badge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.3);
+  margin-top: 6px;
+  font-style: italic;
+}
+
+@keyframes tac-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ── Webcam Discovery UI ──────────────────────────────────────────────────── */
+.webcam-search-box {
+  margin-top: 12px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  animation: tac-slide-in 0.3s ease both;
+}
+
+.webcam-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 10px 0;
+}
+
+.radius-picker {
+  display: flex;
+  gap: 4px;
+  justify-content: space-between;
+}
+
+.radius-btn {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 9px;
+  font-weight: 700;
+  padding: 4px 0;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.radius-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+}
+
+.radius-btn.active {
+  background: var(--accent-color);
+  border-color: var(--accent-color);
+  color: white;
+}
+
+.webcam-search-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  color: white;
+  padding: 8px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.webcam-search-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.webcam-search-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.webcam-results-list {
+  max-height: 200px;
+  overflow-y: auto;
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-right: 4px;
+}
+
+.webcam-results-list::-webkit-scrollbar {
+  width: 3px;
+}
+
+.webcam-results-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+.webcam-result-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  transition: all 0.2s;
+}
+
+.webcam-result-item:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.webcam-result-item.attached {
+  border-color: #facc15;
+  background: rgba(250, 204, 21, 0.05);
+}
+
+.webcam-thumb {
+  width: 36px;
+  height: 36px;
+  background: #000;
+  border-radius: 4px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.webcam-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.webcam-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.webcam-name {
+  font-size: 10px;
+  font-weight: 700;
+  color: white;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.webcam-meta {
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.4);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.webcam-actions {
+  display: flex;
+  gap: 2px;
+}
+
+.webcam-action-btn {
+  width: 24px;
+  height: 24px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.webcam-action-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: white;
+}
+
+.webcam-action-btn.active {
+  background: #facc15;
+  border-color: #facc15;
+  color: #000;
+}
+
+.webcam-empty {
+  padding: 20px 10px;
+  text-align: center;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.3);
+  font-style: italic;
+}
+
+/* ── Map Webcam Markers ────────────────────────────────────────────────────── */
+.webcam-marker {
+  cursor: pointer;
+}
+
+.webcam-marker-icon {
+  width: 20px;
+  height: 20px;
+  background: #facc15;
+  border: 2px solid white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #000;
+  box-shadow: 0 0 10px rgba(250, 204, 21, 0.5);
+  transition: transform 0.2s;
+}
+
+.webcam-marker:hover .webcam-marker-icon {
+  transform: scale(1.2);
+}
+
+.webcam-popup .maplibregl-popup-content {
+  background: rgba(10, 10, 14, 0.95);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: white;
+  padding: 12px;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  font-family: 'Inter', sans-serif;
+}
+
+.webcam-popup h3 {
+  margin: 0 0 8px 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #facc15;
+}
+
+.webcam-popup-preview {
+  width: 180px;
+  aspect-ratio: 16/9;
+  background: #000;
+  margin-bottom: 10px;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.webcam-popup-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.webcam-popup-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.popup-attach-btn {
+  background: #facc15;
+  color: #000;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.popup-link {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 11px;
+  text-decoration: none;
+}
+
+/* ── Tactical Webcam Feed ─────────────────────────────────────────────────── */
+.tac-pane__feed-container {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16/9;
+  background: #000;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.5);
+  margin-top: 5px;
+}
+
+.webcam-iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  filter: contrast(1.1) brightness(1.1);
+}
+
+.webcam-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: contrast(1.1) brightness(1.1);
+}
+
+.tac-pane--webcam {
+  border-color: rgba(250, 204, 21, 0.35);
+  box-shadow: 0 8px 32px rgba(250, 204, 21, 0.1);
 }
