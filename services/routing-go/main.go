@@ -153,8 +153,14 @@ func main() {
 	// Migrate schema
 	db.AutoMigrate(&RouteCache{})
 
-	// Pre-populate cache with REAL OSRM road geometry
-	go preCalculateRealRoutes()
+	// Arts Access Map: migrate + seed Miami-Dade schools (illustrative sample data)
+	MigrateAndSeedSchools()
+
+	// Pre-populate cache with REAL OSRM road geometry (NaviFly legacy; off by default).
+	// Enable with ENABLE_ROUTE_PRECALC=true — it crawls the OSRM demo server for ~30 min.
+	if os.Getenv("ENABLE_ROUTE_PRECALC") == "true" {
+		go preCalculateRealRoutes()
+	}
 
 	log.Println("Routing service starting on :8080...")
 
@@ -171,6 +177,9 @@ func main() {
 
 	r.HandleFunc("/osrm-route", HandleRoute).Methods("GET")
 	r.HandleFunc("/route", HandleRoute).Methods("GET")
+
+	// Arts Access Map routes (schools layer + detail + county summary)
+	RegisterSchoolRoutes(r)
 
 	// Add Root Handler for health checks
 	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

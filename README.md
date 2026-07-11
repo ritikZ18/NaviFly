@@ -1,180 +1,176 @@
-# NaviFly 🛩️
-> High-Fidelity Fleet Command & Navigation Platform
+# Arts Access Miami 🎨🗺️
 
-NaviFly is a production-grade, microservices-oriented distributed system for real-time vehicle orchestration, live traffic intelligence, and cinematic navigation visualization — built for a head-unit experience.
+> An interactive map of **arts-education access across Miami-Dade County public schools** — built for Young Musicians Unite (YMU) / Arts Access Miami.
 
----
+The map answers one question for funders, staff, and district partners: **where do the arts reach students, and where are the gaps?**
 
-## ✨ Feature Highlights
+It presents two lenses over a single dataset:
 
-### 🗺️ Map & Visualization
-| Feature | Description |
-|---|---|
-| **Smart Routing** | Multi-waypoint A* routing with 3 alternate route options, color-coded by ETA |
-| **Globe View** 🌍 | Full 3D spherical Earth projection with auto-rotating animation |
-| **3D Terrain** ⛰️ | Real digital elevation model (DEM) — Arizona mountains rendered in 3D at 45° pitch |
-| **Satellite Tiles** 🛰️ | Toggle between street map and Esri satellite imagery |
-| **Traffic Flow** 🚦 | Live TomTom traffic tiles — green/amber/red road congestion on every street |
-| **Traffic Incidents** | Real accident, closure, and roadwork markers with clickable delay popups |
-| **Live Aircraft** ✈️ | OpenSky Network real aircraft over Arizona, refreshed every 10s |
-| **Aircraft Tracking** | Lock camera to any aircraft by ICAO24 ID |
-| **Simulated Cars** 🚗 | 27 animated cars across 7 AZ highways (fallback when no TomTom key) |
-
-### 🧭 Navigation
-| Feature | Description |
-|---|---|
-| **Turn-by-Turn Routing** | Real OSRM road geometry via PostgreSQL route cache |
-| **Vehicle Simulation** | Smooth movement along road coordinates with configurable speed multiplier |
-| **Multi-Vehicle Modes** | Car, Truck, Motorcycle, Drone — each with unique avatar and speed profile |
-| **Scope / Cinematic Cam** | Birds-eye follow mode with adjustable zoom |
-| **Waypoints** | Up to 5 intermediate stops with drag-to-reorder |
-| **Break Planner** | Automatic rest stop recommendations on long routes |
-| **Dynamic Re-routing** | Re-routes on deviation from planned path |
-| **Offline Maps** | Tile caching for offline map support |
+- **Schools** — every school is a dot, **colored by arts-access level** and **sized by enrollment**.
+- **Partners** — every arts organization is placed at the **centroid of the schools it serves**, with **reach lines** drawn to each school — the "who serves whom" web.
 
 ---
 
-## 🏗️ System Architecture
+## ✨ Features
+
+| Feature | What it does |
+|---|---|
+| **Schools ⇆ Partners toggle** | Two views of the same data — school access vs. organization reach |
+| **Highlight access gaps** | Dims well-served schools and spotlights the schools with limited/no arts programming |
+| **Partner reach lines** | Selecting an org draws lines to every school it serves and **isolates it** (hides other partners) |
+| **Click-to-detail panel** | A school shows its arts partners + impact; a partner shows every school it serves |
+| **School photo flyout** | An openable/closable photo panel beside the school detail (placeholder image → real photo via Airtable) |
+| **Map / Satellite basemap** | Toggle CARTO Voyager ↔ Esri satellite; reach lines + county outline **recolor for contrast** on imagery |
+| **Miami-Dade County boundary** | A dashed county outline + faint fill frames the tracked area |
+| **Clustering** | Schools cluster when zoomed out, individual pins at county zoom |
+| **Legend, scale bar, distance scale** | Lens-aware color index + a bottom-left distance scale |
+| **Mobile-first** | Full-screen map with an on-demand, **swipeable bottom sheet** (swipe up = expand, down = collapse, down again = hide) |
+| **Single-origin** | UI + API served from one URL — shareable via a tunnel / VSCode dev tunnel / LAN with no extra config |
+
+---
+
+## 🏗️ Architecture
 
 ```
-┌─────────────────────┐    HTTP     ┌──────────────────────┐
-│  React Headunit UI  │──────────→ │  Routing Service (Go) │
-│  (MapLibre GL)      │            │  Port 8080           │
-└─────────────────────┘            └───────────┬──────────┘
-         │                                     │ GORM
-         │ WebSocket                     ┌─────▼──────┐
-         ▼                               │ PostgreSQL  │
-┌─────────────────────┐                 │ 600+ routes │
-│ Telemetry Svc (Go)  │                 └────────────┘
-│   Port 8081         │
-└─────────┬───────────┘
-          │ Redis client
-    ┌─────▼──────┐     publishes    ┌───────────────────┐
-    │   Redis    │ ←─────────────── │ Simulator (Python) │
-    └────────────┘                  │ Fleet data gen     │
-                                    └───────────────────┘
+┌─────────────────────────────┐
+│  Browser (React + MapLibre) │
+│  ArtsAccessMap.tsx          │
+└──────────────┬──────────────┘
+               │  /schools*  /partners*   (same origin)
+               ▼
+┌─────────────────────────────┐     proxy      ┌──────────────────────────┐
+│  Vite dev server (:5173)    │ ─────────────► │  routing-go (Go, :8080)  │
+│  proxies API → routing-go   │                │  GORM · gorilla/mux      │
+└─────────────────────────────┘                └────────────┬─────────────┘
+                                                             │ GORM
+                                                       ┌─────▼──────┐
+                                                       │ PostgreSQL │
+                                                       │ schools /  │
+                                                       │ programs   │
+                                                       └────────────┘
 ```
+
+### The data-privacy design (the important bit)
+
+The map is **light by construction, not by optimization**:
+
+- **Heavy, private data** (per-student survey rows) stays in Postgres and is never shipped to the browser.
+- The **public map only loads precomputed aggregates** — a tiny GeoJSON of ~32 school points with summary fields (access level, enrollment, program count). Tens of KB, cached.
+- **Full detail is fetched one item at a time**, only on click (`/schools/{id}`, `/partners/{id}`).
+
+This keeps student data (minors') off the client and the map fast regardless of dataset size.
 
 ---
 
-## 🚀 Quick Start
+## 🧩 Data model
 
-### Prerequisites
-- Docker & Docker Compose
+Two tables; **partners are not a third table** — they're a `GROUP BY organization` over the program rows.
 
-### Run
+```
+School   (id, name, address, lat, lng, region, students, access_level, image_url)
+Program  (id, school_id → School, organization, discipline, students, participation, impact)
+```
+
+- `access_level` (`high` / `medium` / `low` / `none`) is **precomputed on write** from a school's programs — the map never calculates it.
+- A **Partner** = one organization, placed at the **centroid** of the schools it serves, sized by school reach, colored by its primary discipline.
+
+---
+
+## 🔌 API
+
+Served by `routing-go`, and available under the same origin as the UI (via the Vite proxy).
+
+| Endpoint | Returns |
+|---|---|
+| `GET /schools.geojson` | Light FeatureCollection — one point per school (summary fields only). Cached. |
+| `GET /schools/summary` | County rollup: counts by access level & region, totals, gap count. |
+| `GET /schools/{id}` | Full school detail incl. all programs + impact + `image_url`. |
+| `GET /partners.geojson` | One point per organization (centroid, school_count, students, primary discipline, reach level). Cached. |
+| `GET /partners/{id}` | An org with the full list of schools it serves. |
+
+---
+
+## 🚀 Running locally
+
+**Prerequisite:** Docker + Docker Compose.
+
+Bring up the three services the app needs (Postgres, Go API, UI):
+
 ```bash
-./start.sh
+docker compose up -d --build db routing-service ui
 ```
-
-On first run the routing service populates the PostgreSQL cache with ~600 pre-calculated Arizona route pairs (OSRM geometry). This runs once and persists across restarts.
 
 | Service | URL |
 |---|---|
-| Dashboard | http://localhost:5173 |
-| Routing API | http://localhost:8080 |
-| Telemetry API | http://localhost:8081 |
+| **App (UI)** | http://localhost:5173 |
+| API (proxied under the UI too) | http://localhost:8080 |
 
-### Stop
+On startup the API **migrates and seeds** illustrative Miami-Dade sample data (**32 schools · 10 partner orgs · 49 programs · ~63,750 students · 15 gaps**). Sample data auto-refreshes on every restart, so seed edits take effect immediately.
+
+> The legacy OSRM route pre-calculation (from this repo's NaviFly heritage) is **off by default**. Set `ENABLE_ROUTE_PRECALC=true` on `routing-service` only if you want it.
+
+To stop:
+
 ```bash
-./start.sh --stop
+docker compose down          # keep data volume
+docker compose down -v       # also wipe the Postgres volume
 ```
 
 ---
 
-## 🔑 Live Traffic API Setup (Optional)
+## 📱 Sharing to another device (phone / demo)
 
-NaviFly integrates with **TomTom's Traffic API** for real live traffic data (same source as Google Maps).
+The app is **single-origin**: the Vite dev server proxies `/schools` and `/partners` to the Go API, so exposing **only port 5173** gives you the whole app. Vite is configured with `allowedHosts: true` so tunnel/forwarded hostnames are accepted.
 
-1. Sign up for free at [developer.tomtom.com](https://developer.tomtom.com/user/register) — no credit card
-2. Create an app and copy your API key
-3. Add to `ui/react-headunit/.env`:
+- **VSCode Dev Tunnel** — forward port `5173`, set it Public, open the URL on any device.
+- **Cloudflare quick tunnel** — `cloudflared tunnel --url http://localhost:5173`.
+- **Same Wi-Fi** — open `http://<your-LAN-IP>:5173` on the phone.
 
-```env
-VITE_TOMTOM_API_KEY=your_key_here
-```
-
-4. Restart with `./start.sh --stop && ./start.sh`
-
-**Free tier:** 2,500 tile requests/day — plenty for development and demos.
-
-> Without a key, the traffic toggle shows 27 simulated animated cars and OpenSky aircraft as a visual fallback.
+No API URL configuration needed on the other device.
 
 ---
 
-## 🛠️ Tech Stack
+## 🛠️ Tech stack
 
 | Layer | Technology |
 |---|---|
-| Frontend | React 18, TypeScript, MapLibre GL, Vite |
-| Routing Backend | Go, Gorilla Mux, GORM, OSRM |
-| Telemetry Backend | Go, Gorilla Mux, Redis |
-| Map Matching | Go |
-| Database | PostgreSQL (route cache, JSONB) |
-| Cache | Redis (live telemetry state) |
-| Simulator | Python, Flask, requests |
+| Frontend | React 19, TypeScript, **MapLibre GL**, Vite 7 |
+| Basemaps | CARTO Voyager (light) · Esri World Imagery (satellite) |
+| Backend | Go, gorilla/mux, GORM |
+| Database | PostgreSQL 16 |
 | Infra | Docker Compose |
-| Traffic | TomTom Traffic API (live) + OpenSky Network (aircraft) |
-| CI | GitHub Actions |
+| Fonts | Roboto |
 
 ---
 
-## 🧪 Testing
+## 📁 Project structure
 
-All three service layers have automated test coverage:
-
-| Layer | Framework | Tests |
-|---|---|---|
-| routing-go | Go Test + Testify | 11 |
-| mapmatch-go | Go Test + Testify | 6 |
-| telemetry-go | Go Test + Testify + miniredis | 3 |
-| React (RouteContext) | Vitest + Testing Library | 11 |
-| React (SearchableLocationInput) | Vitest + Testing Library | 6 |
-| Python simulator | Pytest + requests-mock | 10 |
-
-### Run Tests
-
-**Go services:**
-```bash
-cd services/routing-go && go test ./... -v
-cd services/mapmatch-go && go test ./... -v
-cd services/telemetry-go && go test ./... -v
+```
+artlook-ymu/
+├── ui/react-headunit/
+│   └── src/
+│       ├── App.tsx                     # renders ArtsAccessMap
+│       ├── artlook.css                 # light "South Beach" theme
+│       └── components/
+│           └── ArtsAccessMap.tsx       # the whole map app (both lenses)
+├── services/routing-go/
+│   ├── main.go                         # server + DB bootstrap
+│   ├── schools.go                      # School/Program models, seed, /schools endpoints
+│   └── partners.go                     # GROUP BY-org aggregation, /partners endpoints
+├── docker-compose.yaml
+└── README.md
 ```
 
-**React UI:**
-```bash
-cd ui/react-headunit && npm test
-```
-
-**Python:**
-```bash
-cd analytics/python && pytest -v
-```
+> This repository was adapted from **NaviFly** (a MapLibre + Go fleet-navigation project). The other services under `services/` and `analytics/` are NaviFly heritage and are not used by the Arts Access app.
 
 ---
 
-## 📁 Project Structure
+## 🗺️ Roadmap
 
-```
-NaviFly/
-├── ui/react-headunit/         # React dashboard (MapLibre GL)
-│   ├── src/components/        # Map, NavigationPanel, RouteLoader...
-│   ├── src/context/           # RouteContext (global state)
-│   └── .env                   # VITE_TOMTOM_API_KEY (you add this)
-├── services/
-│   ├── routing-go/            # Route calculation + PostgreSQL cache
-│   ├── telemetry-go/          # Vehicle telemetry ingestion
-│   └── mapmatch-go/           # GPS map-matching
-├── analytics/python/          # Fleet simulator + Pytest tests
-├── data/                      # Arizona road graph data
-├── docker-compose.yml
-└── start.sh                   # One-command deploy & teardown
-```
+- **Airtable sync** — replace the seeded sample data with live data pulled from an Airtable base (schools + programs), including **geocoded addresses** so pins snap to real buildings. Same pipeline shape: intake → validate/normalize (AI-assisted) → Postgres → precompute → tiny public GeoJSON.
+- Fly-to-school from a partner's "Schools served" list.
+- Real school photography in the photo flyout (driven by `image_url`).
 
 ---
 
-## 📸 Screenshots
-
-<img width="2184" alt="NaviFly Dashboard" src="https://github.com/user-attachments/assets/00642798-4bb6-45b9-96ac-5ae2fdec729b" />
-<img width="2184" alt="Route Planning" src="https://github.com/user-attachments/assets/3597069e-a88d-4893-b00d-012f27f11b96" />
-<img width="2184" alt="Navigation Mode" src="https://github.com/user-attachments/assets/f93d706e-34b2-4b94-b3c8-2b9cb5051364" />
+*All figures in the app are labeled **illustrative sample data** — invented numbers that demonstrate the concept until real survey data is connected.*
