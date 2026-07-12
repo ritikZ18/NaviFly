@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -387,44 +388,84 @@ func latestBatchID() string {
 }
 
 // ── Airtable adapter (env-gated) ─────────────────────────────────────────────
-// Pulls a Schools table from Airtable and maps common field names to
-// IncomingSchool. Program linking is finalized once the base schema is shared.
-//   AIRTABLE_TOKEN, AIRTABLE_BASE_ID, AIRTABLE_TABLE (default "Schools")
+// Pulls a **Schools** table and a linked **Programs** table from Airtable and
+// maps them to IncomingSchool (programs attached to their school). Feeds the
+// SAME validation pipeline, so all the accept/clean/flag guarantees still apply.
+//
+//   AIRTABLE_TOKEN            personal access token (data.records:read)
+//   AIRTABLE_BASE_ID          the base id (app…)
+//   AIRTABLE_SCHOOLS_TABLE    default "Schools"
+//   AIRTABLE_PROGRAMS_TABLE   default "Programs"
+
+type airtableRecord struct {
+	ID     string                 `json:"id"`
+	Fields map[string]interface{} `json:"fields"`
+}
+
+func envOr(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
+}
+
+// airtableBase returns just the base id, tolerating a pasted URL path like
+// "appXXXX/tblYYYY/viwZZZZ" by keeping only the leading app… segment.
+func airtableBase() string {
+	b := strings.TrimSpace(os.Getenv("AIRTABLE_BASE_ID"))
+	if i := strings.IndexByte(b, '/'); i >= 0 {
+		b = b[:i]
+	}
+	return b
+}
+
+// airtableFetchAll pages through every record in a table (Airtable caps at 100/page).
+func airtableFetchAll(base, table, token string) ([]airtableRecord, error) {
+	var all []airtableRecord
+	offset := ""
+	client := &http.Client{Timeout: 20 * time.Second}
+	for {
+		u := fmt.Sprintf("https://api.airtable.com/v0/%s/%s?pageSize=100", base, url.PathEscape(table))
+		if offset != "" {
+			u += "&offset=" + url.QueryEscape(offset)
+		}
+		req, _ := http.NewRequest("GET", u, nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		resp, err := client.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		body, _ := ioutil.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != 200 {
+			return nil, fmt.Errorf("airtable table %q returned %d: %s", table, resp.StatusCode, string(body))
+		}
+		var page struct {
+			Records []airtableRecord `json:"records"`
+			Offset  string           `json:"offset"`
+		}
+		if err := json.Unmarshal(body, &page); err != nil {
+			return nil, err
+		}
+		all = append(all, page.Records...)
+		if page.Offset == "" {
+			break
+		}
+		offset = page.Offset
+	}
+	return all, nil
+}
 
 func fetchAirtableSchools() ([]IncomingSchool, error) {
 	token := os.Getenv("AIRTABLE_TOKEN")
-	base := os.Getenv("AIRTABLE_BASE_ID")
-	table := os.Getenv("AIRTABLE_TABLE")
-	if table == "" {
-		table = "Schools"
-	}
+	base := airtableBase()
 	if token == "" || base == "" {
 		return nil, fmt.Errorf("AIRTABLE_TOKEN and AIRTABLE_BASE_ID must be set")
 	}
+	schoolsTable := envOr("AIRTABLE_SCHOOLS_TABLE", "Schools")
+	programsTable := envOr("AIRTABLE_PROGRAMS_TABLE", "Programs")
 
-	url := fmt.Sprintf("https://api.airtable.com/v0/%s/%s", base, table)
-	req, _ := http.NewRequest("GET", url, nil)
-	req.Header.Set("Authorization", "Bearer "+token)
-	client := &http.Client{Timeout: 20 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	body, _ := ioutil.ReadAll(resp.Body)
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("airtable returned %d: %s", resp.StatusCode, string(body))
-	}
-
-	var parsed struct {
-		Records []struct {
-			Fields map[string]interface{} `json:"fields"`
-		} `json:"records"`
-	}
-	if err := json.Unmarshal(body, &parsed); err != nil {
-		return nil, err
-	}
-
+	str := func(v interface{}) string { s, _ := v.(string); return s }
 	field := func(f map[string]interface{}, keys ...string) interface{} {
 		for _, k := range keys {
 			if v, ok := f[k]; ok {
@@ -433,25 +474,53 @@ func fetchAirtableSchools() ([]IncomingSchool, error) {
 		}
 		return nil
 	}
-	str := func(v interface{}) string {
-		if s, ok := v.(string); ok {
-			return s
-		}
-		return ""
-	}
 
-	out := make([]IncomingSchool, 0, len(parsed.Records))
-	for _, rec := range parsed.Records {
+	// 1) Schools — keyed by Airtable record id so programs can link back
+	schoolRecs, err := airtableFetchAll(base, schoolsTable, token)
+	if err != nil {
+		return nil, err
+	}
+	byRec := make(map[string]*IncomingSchool, len(schoolRecs))
+	order := make([]string, 0, len(schoolRecs))
+	for _, rec := range schoolRecs {
 		f := rec.Fields
-		out = append(out, IncomingSchool{
-			ID:       str(field(f, "id", "ID", "Slug")),
+		byRec[rec.ID] = &IncomingSchool{
 			Name:     str(field(f, "Name", "School", "name")),
 			Address:  str(field(f, "Address", "address")),
 			Lat:      field(f, "Lat", "Latitude", "lat"),
 			Lng:      field(f, "Lng", "Longitude", "lng", "Long"),
 			Region:   str(field(f, "Region", "region")),
 			Students: field(f, "Students", "Enrollment", "students"),
-		})
+			ImageURL: str(field(f, "Image", "ImageURL", "Photo")),
+		}
+		order = append(order, rec.ID)
+	}
+
+	// 2) Programs — attach each to its linked school (Programs table is optional)
+	if programRecs, perr := airtableFetchAll(base, programsTable, token); perr == nil {
+		for _, rec := range programRecs {
+			f := rec.Fields
+			var schoolRecID string
+			if arr, ok := field(f, "School", "Schools", "school").([]interface{}); ok && len(arr) > 0 {
+				schoolRecID, _ = arr[0].(string)
+			}
+			s := byRec[schoolRecID]
+			if s == nil {
+				continue
+			}
+			s.Programs = append(s.Programs, IncomingProgram{
+				Organization:  str(field(f, "Organization", "Org", "Partner")),
+				Discipline:    str(field(f, "Discipline", "discipline")),
+				Students:      field(f, "Students", "students"),
+				Participation: field(f, "Participation", "participation"),
+				Impact:        field(f, "Impact", "impact"),
+			})
+		}
+	}
+
+	out := make([]IncomingSchool, 0, len(order))
+	for _, id := range order {
+		out = append(out, *byRec[id])
 	}
 	return out, nil
 }
@@ -462,6 +531,66 @@ func RegisterSyncRoutes(r *mux.Router) {
 	r.HandleFunc("/sync/validate", handleSyncValidate).Methods("POST")
 	r.HandleFunc("/sync/commit", handleSyncCommit).Methods("POST")
 	r.HandleFunc("/sync/report", handleSyncReport).Methods("GET")
+	r.HandleFunc("/sync/airtable/schema", handleAirtableSchema).Methods("GET")
+}
+
+// handleAirtableSchema introspects the configured base via Airtable's Metadata
+// API (token needs schema.bases:read) — lists every table and its fields/types
+// so we can map your real base to the Schools/Programs model.
+func handleAirtableSchema(w http.ResponseWriter, r *http.Request) {
+	token := os.Getenv("AIRTABLE_TOKEN")
+	base := airtableBase()
+	if token == "" || base == "" {
+		http.Error(w, "set AIRTABLE_TOKEN and AIRTABLE_BASE_ID", http.StatusBadRequest)
+		return
+	}
+	u := fmt.Sprintf("https://api.airtable.com/v0/meta/bases/%s/tables", url.PathEscape(base))
+	req, _ := http.NewRequest("GET", u, nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	client := &http.Client{Timeout: 20 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+	body, _ := ioutil.ReadAll(resp.Body)
+	if resp.StatusCode != 200 {
+		http.Error(w, fmt.Sprintf("airtable meta returned %d: %s", resp.StatusCode, string(body)), http.StatusBadGateway)
+		return
+	}
+
+	var meta struct {
+		Tables []struct {
+			Name   string `json:"name"`
+			Fields []struct {
+				Name string `json:"name"`
+				Type string `json:"type"`
+			} `json:"fields"`
+		} `json:"tables"`
+	}
+	json.Unmarshal(body, &meta)
+
+	type field struct {
+		Name string `json:"name"`
+		Type string `json:"type"`
+	}
+	type table struct {
+		Name   string  `json:"name"`
+		Fields []field `json:"fields"`
+	}
+	out := struct {
+		Tables []table `json:"tables"`
+	}{}
+	for _, t := range meta.Tables {
+		ti := table{Name: t.Name}
+		for _, f := range t.Fields {
+			ti.Fields = append(ti.Fields, field{Name: f.Name, Type: f.Type})
+		}
+		out.Tables = append(out.Tables, ti)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(out)
 }
 
 // handleSyncValidate: stage + validate (dry-run — live DB untouched).

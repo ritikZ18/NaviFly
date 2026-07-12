@@ -16,12 +16,17 @@ services:
       - "6379:6379"
 
   routing-service:
-    build: 
+    build:
       context: ./services/routing-go
     ports:
       - "8080:8080"
     environment:
       - DATABASE_URL=host=db user=admin password=navifly dbname=navifly port=5432 sslmode=disable
+      # Airtable sync — values come from a gitignored .env file in the project root
+      - AIRTABLE_TOKEN=${AIRTABLE_TOKEN:-}
+      - AIRTABLE_BASE_ID=${AIRTABLE_BASE_ID:-}
+      - AIRTABLE_SCHOOLS_TABLE=${AIRTABLE_SCHOOLS_TABLE:-Schools}
+      - AIRTABLE_PROGRAMS_TABLE=${AIRTABLE_PROGRAMS_TABLE:-Programs}
     depends_on:
       - db
 
