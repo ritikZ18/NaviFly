@@ -87,6 +87,75 @@ Served by `routing-go`, and available under the same origin as the UI (via the V
 | `GET /schools/{id}` | Full school detail incl. all programs + impact + `image_url`. |
 | `GET /partners.geojson` | One point per organization (centroid, school_count, students, primary discipline, reach level). Cached. |
 | `GET /partners/{id}` | An org with the full list of schools it serves. |
+| `POST /sync/validate` | Stage + validate/clean external rows (dry-run — live DB untouched). Returns an accept/clean/flag report. |
+| `POST /sync/commit` | Promote a validated batch to the live tables. Flagged rows report why they didn't migrate. |
+| `GET /sync/report` | Inspect a staged batch. |
+
+---
+
+## 🛡️ External data sync & validation
+
+External data (Airtable) never lands directly in the live tables — it flows through a two-stage **staging + validation middleware**, so malformed data can't corrupt the map.
+
+**Stage 1 — validate → staging** (`POST /sync/validate`) — dry run, live DB untouched. Each row becomes:
+
+- **accepted** — valid as-is
+- **cleaned** — auto-repaired (trim text · coerce `"1200"`→number · normalize `"music"`→`Music` · clamp participation/impact to 0–100 · derive region from coordinates · generate a slug id · drop empty programs)
+- **flagged** — unfixable → kept **out** of the live DB, with a reason
+
+**Stage 2 — commit** (`POST /sync/commit`) — promotes only accepted/cleaned rows (upsert). Flagged rows are not migrated; the response reports **why**.
+
+### Try it
+
+```bash
+# a batch mixing a valid, a messy, and a bad row
+curl -sX POST -H 'Content-Type: application/json' \
+  -d '{"schools":[
+        {"id":"ok-high","name":"OK High","lat":25.77,"lng":-80.19,"region":"Central Dade","students":1500,
+         "programs":[{"organization":"Miami Music Project","discipline":"Music","students":100,"participation":20,"impact":75}]},
+        {"name":"  Messy Middle  ","lat":"25.90","lng":"-80.21","region":"","students":"1200",
+         "programs":[{"organization":"Guitars Over Guns","discipline":"music","participation":"200","impact":85}]},
+        {"id":"bad-coords","name":"Nowhere","lat":40.71,"lng":-74.0,"students":900}
+      ]}' \
+  http://localhost:8080/sync/validate
+# → { "accepted":1, "cleaned":1, "flagged":1, "records":[ … ] }
+
+# promote the good rows; flagged rows report why they failed
+curl -sX POST http://localhost:8080/sync/commit
+# → { "promoted":2, "failed":1,
+#     "failures":[{"school_id":"bad-coords",
+#       "issues":[{"message":"(40.71, -74.00) is outside Miami-Dade bounds"}]}] }
+```
+
+### Faulty-data handling (seen in testing)
+
+| Incoming problem | Outcome | What the middleware did |
+|---|---|---|
+| `students: "1200"` (text) | cleaned | parsed text → number |
+| `discipline: "music"` | cleaned | normalized → `Music` |
+| `participation: 200` | cleaned | clamped to `0–100` |
+| missing `id` | cleaned | generated slug from `name` |
+| empty `region` + valid coords | cleaned | derived region from latitude |
+| program with no organization | cleaned | dropped that program (school kept) |
+| coordinates outside Miami-Dade | **flagged** | not migrated — *"outside Miami-Dade bounds"* |
+| missing `name` **and** `id` | **flagged** | not migrated — *"cannot identify record"* |
+
+The **Airtable adapter** (`POST /sync/validate?source=airtable`, env-gated by `AIRTABLE_TOKEN` / `AIRTABLE_BASE_ID` / `AIRTABLE_TABLE`) feeds the *same* pipeline, so these guarantees hold whether data arrives via request body or Airtable.
+
+### Inspecting the database
+
+```bash
+# interactive psql shell
+docker exec -it artlook-ymu-db-1 psql -U admin -d navifly
+
+# one-off queries
+docker exec artlook-ymu-db-1 psql -U admin -d navifly -c "SELECT count(*) FROM schools;"
+docker exec artlook-ymu-db-1 psql -U admin -d navifly -c "SELECT id, name, region, access_level, students FROM schools ORDER BY region;"
+docker exec artlook-ymu-db-1 psql -U admin -d navifly -c "SELECT organization, count(*) FROM programs GROUP BY organization ORDER BY 2 DESC;"
+
+# the sync staging table = full validation history
+docker exec artlook-ymu-db-1 psql -U admin -d navifly -c "SELECT batch_id, school_id, status, promoted FROM sync_records ORDER BY id DESC LIMIT 20;"
+```
 
 ---
 
@@ -105,7 +174,7 @@ docker compose up -d --build db routing-service ui
 | **App (UI)** | http://localhost:5173 |
 | API (proxied under the UI too) | http://localhost:8080 |
 
-On startup the API **migrates and seeds** illustrative Miami-Dade sample data (**32 schools · 10 partner orgs · 49 programs · ~63,750 students · 15 gaps**). Sample data auto-refreshes on every restart, so seed edits take effect immediately.
+On **first** startup (empty DB) the API **migrates and seeds** illustrative Miami-Dade sample data (**32 schools · 10 partner orgs · 49 programs · ~63,750 students · 15 gaps**). Once real data is synced it is **preserved across restarts** — set `RESEED_SAMPLE=true` on the routing service to force a fresh sample re-seed.
 
 > The legacy OSRM route pre-calculation (from this repo's NaviFly heritage) is **off by default**. Set `ENABLE_ROUTE_PRECALC=true` on `routing-service` only if you want it.
 
@@ -156,7 +225,8 @@ artlook-ymu/
 ├── services/routing-go/
 │   ├── main.go                         # server + DB bootstrap
 │   ├── schools.go                      # School/Program models, seed, /schools endpoints
-│   └── partners.go                     # GROUP BY-org aggregation, /partners endpoints
+│   ├── partners.go                     # GROUP BY-org aggregation, /partners endpoints
+│   └── sync.go                         # external-data staging + validation middleware
 ├── docker-compose.yaml
 └── README.md
 ```

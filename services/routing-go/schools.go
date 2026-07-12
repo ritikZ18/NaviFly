@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"sync"
 
 	"github.com/gorilla/mux"
@@ -74,8 +75,19 @@ func computeAccessLevel(students int, programs []Program) string {
 // sample data. In sample-data mode it refreshes on every startup so seed edits
 // take effect immediately. (Once Airtable sync is wired, this wipe is gated off.)
 func MigrateAndSeedSchools() {
-	if err := db.AutoMigrate(&School{}, &Program{}); err != nil {
+	if err := db.AutoMigrate(&School{}, &Program{}, &SyncRecord{}); err != nil {
 		log.Printf("⚠️ school migrate failed: %v", err)
+		return
+	}
+
+	// Don't clobber real data: only (re)seed sample data when the DB is empty,
+	// or when explicitly forced with RESEED_SAMPLE=true (dev iteration).
+	var existing int64
+	db.Model(&School{}).Count(&existing)
+	if existing > 0 && os.Getenv("RESEED_SAMPLE") != "true" {
+		rebuildSchoolsGeoJSON()
+		rebuildPartnersGeoJSON()
+		log.Printf("🎨 Arts Access: %d schools present — skipping sample seed", existing)
 		return
 	}
 
@@ -144,6 +156,9 @@ func RegisterSchoolRoutes(r *mux.Router) {
 	// Partners lens — same program rows, grouped by organization
 	r.HandleFunc("/partners.geojson", handlePartnersGeoJSON).Methods("GET")
 	r.HandleFunc("/partners/{id}", handlePartnerDetail).Methods("GET")
+
+	// External-data sync: validate → stage → commit
+	RegisterSyncRoutes(r)
 }
 
 // handleSchoolsGeoJSON serves the light, cached, all-pins summary layer.
