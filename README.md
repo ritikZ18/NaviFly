@@ -140,7 +140,41 @@ curl -sX POST http://localhost:8080/sync/commit
 | coordinates outside Miami-Dade | **flagged** | not migrated — *"outside Miami-Dade bounds"* |
 | missing `name` **and** `id` | **flagged** | not migrated — *"cannot identify record"* |
 
-The **Airtable adapter** (`POST /sync/validate?source=airtable`, env-gated by `AIRTABLE_TOKEN` / `AIRTABLE_BASE_ID` / `AIRTABLE_TABLE`) feeds the *same* pipeline, so these guarantees hold whether data arrives via request body or Airtable.
+### Airtable source & mapping
+
+Set credentials in a **gitignored `.env`** at the project root (template: `.env.example`):
+
+```
+AIRTABLE_TOKEN=pat…        # scopes: schema.bases:read + data.records:read
+AIRTABLE_BASE_ID=app…      # a pasted app…/tbl…/viw… URL path is tolerated (stripped to app…)
+```
+
+**Easiest — run it via `start.sh`** (the routing service must be running):
+
+```bash
+./start.sh --airtable-schema   # list your Airtable tables + fields
+./start.sh --sync-airtable      # validate Airtable data into staging (dry run — live DB untouched)
+./start.sh --sync-commit        # promote the clean rows to the live map
+```
+
+Or hit the endpoints directly:
+- `GET /sync/airtable/schema` — lists every table + field via Airtable's Metadata API (to confirm mapping).
+- `POST /sync/validate?source=airtable` — pulls records and runs the **same** validate → clean/flag pipeline.
+- `POST /sync/commit` — promotes the last validated batch (flagged rows report why they didn't migrate).
+
+**What it fetches and how it maps** (join by the text id columns; not Airtable links):
+
+| App field | Airtable source |
+|---|---|
+| `School.id / name / lat / lng / students` | `schools`.school_id / name / latitude / longitude / total_enrollment |
+| `School.address / region` | `schools`.address_line1 (+ city) / region_id → `regions`.name |
+| `Program` (one per offering) | `school_program_offerings` row (joined on `school_id`) |
+| `Program.organization` | offering.lead_partner_id → `partners`.display_name |
+| `Program.discipline` | offering.program_id → `programs`.primary_discipline |
+| `Program.students` | offering.students_served |
+| `Program.impact` | `school_program_metrics` (chosen metric) |
+
+Notes for this base: primary-key fields carry a CSV **BOM** prefix (stripped on read); ids are **text business keys** (string-matched, not linked records); sync **only public + approved** rows (`public_profile_enabled`, offering `status` / `data_quality_status`). Table names are configurable via `AIRTABLE_SCHOOLS_TABLE` / `AIRTABLE_PROGRAMS_TABLE`.
 
 ### Inspecting the database
 

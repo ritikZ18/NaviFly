@@ -486,11 +486,11 @@ func fetchAirtableSchools() ([]IncomingSchool, error) {
 		f := rec.Fields
 		byRec[rec.ID] = &IncomingSchool{
 			Name:     str(field(f, "Name", "School", "name")),
-			Address:  str(field(f, "Address", "address")),
-			Lat:      field(f, "Lat", "Latitude", "lat"),
-			Lng:      field(f, "Lng", "Longitude", "lng", "Long"),
-			Region:   str(field(f, "Region", "region")),
-			Students: field(f, "Students", "Enrollment", "students"),
+			Address:  str(field(f, "Address", "address_line1", "address")),
+			Lat:      field(f, "Lat", "Latitude", "latitude", "lat"),
+			Lng:      field(f, "Lng", "Longitude", "longitude", "lng", "Long"),
+			Region:   str(field(f, "Region", "region_id", "region")),
+			Students: field(f, "Students", "Enrollment", "total_enrollment", "students"),
 			ImageURL: str(field(f, "Image", "ImageURL", "Photo")),
 		}
 		order = append(order, rec.ID)

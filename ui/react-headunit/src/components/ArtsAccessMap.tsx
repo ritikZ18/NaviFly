@@ -238,7 +238,7 @@ const ArtsAccessMap: React.FC = () => {
             m.addSource('county', { type: 'geojson', data: COUNTY_BOUNDARY });
             m.addLayer({
                 id: 'county-fill', type: 'fill', source: 'county',
-                paint: { 'fill-color': '#0fb5a6', 'fill-opacity': 0.05 },
+                paint: { 'fill-color': '#0a9488', 'fill-opacity': 0.05 },
             });
             m.addLayer({
                 id: 'county-outline', type: 'line', source: 'county',
@@ -262,7 +262,7 @@ const ArtsAccessMap: React.FC = () => {
                 'Dance', DISCIPLINE_COLOR['Dance'],
                 'Visual Arts', DISCIPLINE_COLOR['Visual Arts'],
                 'Theater', DISCIPLINE_COLOR['Theater'],
-                '#0fb5a6',
+                '#0a9488',
             ];
             const partnerRadius: maplibregl.ExpressionSpecification = [
                 'interpolate', ['linear'], ['get', 'school_count'], 1, 11, 9, 27,
@@ -299,7 +299,7 @@ const ArtsAccessMap: React.FC = () => {
                 paint: {
                     'circle-color': '#ffffff', 'circle-opacity': 0.96,
                     'circle-radius': ['step', ['get', 'point_count'], 17, 5, 23, 15, 30],
-                    'circle-stroke-width': 3, 'circle-stroke-color': '#0fb5a6',
+                    'circle-stroke-width': 3, 'circle-stroke-color': '#0a9488',
                 },
             });
             m.addLayer({
@@ -508,12 +508,12 @@ const ArtsAccessMap: React.FC = () => {
             m.setPaintProperty('reach-endpoint-labels', 'text-halo-color', sat ? 'rgba(0,0,0,0.85)' : '#ffffff');
         }
         if (m.getLayer('county-outline')) {
-            m.setPaintProperty('county-outline', 'line-color', sat ? '#ffe14d' : '#0a9488');
+            m.setPaintProperty('county-outline', 'line-color', sat ? '#ffd60a' : '#0a9488');
             m.setPaintProperty('county-outline', 'line-opacity', sat ? 0.9 : 0.75);
             m.setPaintProperty('county-outline', 'line-width', sat ? 3 : 2.5);
         }
         if (m.getLayer('county-fill')) {
-            m.setPaintProperty('county-fill', 'fill-color', sat ? '#ffffff' : '#0fb5a6');
+            m.setPaintProperty('county-fill', 'fill-color', sat ? '#ffffff' : '#0a9488');
         }
     }, [basemap, mapLoaded]);
 
@@ -563,7 +563,7 @@ const ArtsAccessMap: React.FC = () => {
             {/* Header */}
             <header className="aa-header">
                 <div className="aa-brand">
-                    <span className="aa-logo">◆</span>
+                    <img className="aa-logo-img" src="/assets/artacesslogo.png" alt="Arts Access Miami" />
                     <div>
                         <h1>Arts Access Miami</h1>
                         <p>School Arts-Access Map · Miami-Dade County</p>
