@@ -9,6 +9,28 @@ It presents two lenses over a single dataset:
 - **Schools** — every school is a dot, **colored by arts-access level** and **sized by enrollment**.
 - **Partners** — every arts organization is placed at the **centroid of the schools it serves**, with **reach lines** drawn to each school — the "who serves whom" web.
 
+
+## 📸 Screenshots
+
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <img src="https://github.com/user-attachments/assets/c982a7a5-178f-45c0-9d12-8520e7d691a5" width="100%" alt="Overview"/>
+    </td>
+    <td align="center" width="50%">
+      <img src="https://github.com/user-attachments/assets/807b3ef7-8ff5-444d-94b7-5ae322feef7d" width="100%" alt="Partner View"/>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="https://github.com/user-attachments/assets/6fd16191-8892-4408-afda-a02d7e738603" width="100%" alt="School Details"/>
+    </td>
+    <td align="center">
+      <img src="https://github.com/user-attachments/assets/3eca1067-271e-48d0-b267-fddde96df6f9" width="100%" alt="Satellite View"/>
+    </td>
+  </tr>
+</table>
+
 ---
 
 ## ✨ Features
