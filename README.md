@@ -29,6 +29,13 @@ It presents two lenses over a single dataset:
       <img src="https://github.com/user-attachments/assets/3eca1067-271e-48d0-b267-fddde96df6f9" width="100%" alt="Satellite View"/>
     </td>
   </tr>
+  <tr>
+    <td align="center">
+      <img src="https://github.com/user-attachments/assets/ec89b231-57b9-4161-a623-be4b48655e66" width="100%" alt="School Details"/>
+    </td>
+  </tr>
+
+
 </table>
 
 ---
