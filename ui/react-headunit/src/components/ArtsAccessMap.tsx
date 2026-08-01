@@ -626,6 +626,8 @@ const ArtsAccessMap: React.FC = () => {
                             <div className="aa-legend-note">Dot size = schools reached · tap a partner to trace its lines</div>
                         </>
                     )}
+                    {/* "Confused? ask me" helper — attached to the legend's bottom border */}
+                    <MapAssistant />
                 </div>
 
                 {/* School photo flyout — opens to the left of the detail panel */}
@@ -676,6 +678,167 @@ const ArtsAccessMap: React.FC = () => {
                     </div>
                 </aside>
             </div>
+        </div>
+    );
+};
+
+// ── Map assistant ─────────────────────────────────────────────────────────
+// A small, friendly helper that answers common questions about the map.
+// It runs entirely client-side (a keyword resolver over a tiny knowledge base),
+// so it needs no API key and works on the static build. To make it Claude-backed
+// later, replace resolveQuery() with a fetch to a server endpoint that proxies
+// the Anthropic API — keep the key on the server, never in the browser.
+type ChatMsg = { role: 'user' | 'assistant'; text: string };
+
+const ASSISTANT_KB: { keys: string[]; answer: string }[] = [
+    {
+        keys: ['color', 'colour', 'red', 'green', 'orange', 'yellow', 'level', 'mean', 'legend'],
+        answer: 'Each pin is a school, colored by how much arts access it has: green = strong, yellow = medium, orange = low, and red = little to none. Bigger dots mean more students — so a large red pin is a big school with a real gap.',
+    },
+    {
+        keys: ['size', 'dot', 'big', 'small', 'enrollment', 'students', 'bigger'],
+        answer: 'Dot size = student enrollment. The bigger the pin, the more kids at that school — handy for spotting where a gap affects the most students.',
+    },
+    {
+        keys: ['partner', 'partners', 'serve', 'serves', 'who', 'line', 'lines', 'reach', 'organization', 'org', 'provider'],
+        answer: 'Switch to the Partners lens at the top of the map to see arts organizations. Each partner sits at the center of the schools it serves, and the lines trace who serves whom. Tap a partner to isolate just its connections.',
+    },
+    {
+        keys: ['gap', 'gaps', 'highlight', 'underserved', 'need', 'missing', 'where'],
+        answer: 'Use the "Highlight access gaps" button in the top-right. It fades the well-served schools so the ones with low or no arts access stand out — that’s where a new program would help most.',
+    },
+    {
+        keys: ['satellite', 'map view', 'basemap', 'imagery', 'aerial', 'view'],
+        answer: 'Tap the 🛰️ button on the map to switch between the street map and satellite imagery. The connection lines brighten on satellite so they stay easy to read.',
+    },
+    {
+        keys: ['real', 'sample', 'data', 'accurate', 'fake', 'illustrative', 'actual', 'source'],
+        answer: 'This view uses illustrative sample data to show how the map works. In the live version it’s fed from the real Airtable base and cleaned through a validation step before anything reaches the map.',
+    },
+    {
+        keys: ['click', 'tap', 'detail', 'details', 'school', 'info', 'panel', 'program', 'programs'],
+        answer: 'Click any school pin to open its details on the right — access level, enrollment, and the arts programs it offers. Click a partner name there to jump straight to that partner.',
+    },
+    {
+        keys: ['what', 'about', 'purpose', 'why', 'arts access', 'do', 'this'],
+        answer: 'This map shows where arts access is strong or thin across Miami-Dade schools, and which partners already serve them — so it’s easy to see the gaps and decide where the next program should go.',
+    },
+    {
+        keys: ['hi', 'hello', 'hey', 'help', 'thanks', 'thank'],
+        answer: 'Hi! I can explain the colors, the partner lines, how to find gaps, or anything else on the map. Tap a question below or just ask.',
+    },
+];
+
+const ASSISTANT_FALLBACK =
+    'I’m not sure about that one — but I can help with the map itself: the colors, dot sizes, partners and their lines, finding access gaps, or the satellite view. Try one of the questions below.';
+
+function resolveQuery(input: string): string {
+    const q = input.toLowerCase();
+    let best = { score: 0, answer: ASSISTANT_FALLBACK };
+    for (const item of ASSISTANT_KB) {
+        const score = item.keys.reduce((n, k) => (q.includes(k) ? n + 1 : n), 0);
+        if (score > best.score) best = { score, answer: item.answer };
+    }
+    return best.answer;
+}
+
+const ASSISTANT_SUGGESTIONS = [
+    'What do the colors mean?',
+    "What's a partner?",
+    'How do I find gaps?',
+    'Is this real data?',
+];
+
+// Crisp inline sparkle mark — the "AI helper" cue, sharp at any size
+const SparkleIcon: React.FC = () => (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path
+            d="M12 2.5l1.7 5.2a3 3 0 0 0 1.9 1.9l5.2 1.7-5.2 1.7a3 3 0 0 0-1.9 1.9L12 20.1l-1.7-5.2a3 3 0 0 0-1.9-1.9L3.2 11.3l5.2-1.7a3 3 0 0 0 1.9-1.9L12 2.5z"
+            fill="currentColor"
+        />
+        <path
+            d="M19 3.2l.66 1.74L21.4 5.6l-1.74.66L19 8l-.66-1.74L16.6 5.6l1.74-.66L19 3.2z"
+            fill="currentColor"
+            opacity="0.85"
+        />
+    </svg>
+);
+
+const MapAssistant: React.FC = () => {
+    const [open, setOpen] = useState(false);
+    const [input, setInput] = useState('');
+    const [typing, setTyping] = useState(false);
+    const [messages, setMessages] = useState<ChatMsg[]>([
+        { role: 'assistant', text: "Hi! I'm here if the map feels confusing. Ask me about the colors, partners, or how to spot arts-access gaps." },
+    ]);
+    const scrollRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const el = scrollRef.current;
+        if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    }, [messages, typing, open]);
+
+    const send = useCallback((raw: string) => {
+        const text = raw.trim();
+        if (!text) return;
+        setMessages(m => [...m, { role: 'user', text }]);
+        setInput('');
+        setTyping(true);
+        const answer = resolveQuery(text);
+        window.setTimeout(() => {
+            setMessages(m => [...m, { role: 'assistant', text: answer }]);
+            setTyping(false);
+        }, 380);
+    }, []);
+
+    return (
+        <div className="aa-assistant">
+            {open && (
+                <div className="aa-assist-panel" role="dialog" aria-label="Map assistant">
+                    <div className="aa-assist-head">
+                        <span className="aa-assist-avatar"><SparkleIcon /></span>
+                        <div className="aa-assist-titles">
+                            <span className="aa-assist-title">Map assistant</span>
+                            <span className="aa-assist-sub"><span className="aa-assist-status" />Online · here to help</span>
+                        </div>
+                        <button className="aa-assist-x" onClick={() => setOpen(false)} aria-label="Close assistant">✕</button>
+                    </div>
+                    <div className="aa-assist-body" ref={scrollRef}>
+                        {messages.map((m, i) => (
+                            <div key={i} className={`aa-msg ${m.role}`}>{m.text}</div>
+                        ))}
+                        {typing && (
+                            <div className="aa-msg assistant aa-typing">
+                                <span /><span /><span />
+                            </div>
+                        )}
+                        {messages.length <= 1 && (
+                            <div className="aa-suggests">
+                                {ASSISTANT_SUGGESTIONS.map(s => (
+                                    <button key={s} className="aa-suggest" onClick={() => send(s)}>{s}</button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                    <form className="aa-assist-input" onSubmit={e => { e.preventDefault(); send(input); }}>
+                        <input
+                            value={input}
+                            onChange={e => setInput(e.target.value)}
+                            placeholder="Ask about the map…"
+                            aria-label="Ask about the map"
+                        />
+                        <button type="submit" aria-label="Send" disabled={!input.trim()}>➤</button>
+                    </form>
+                </div>
+            )}
+            <button
+                className={`aa-assist-fab ${open ? 'open' : ''}`}
+                onClick={() => setOpen(o => !o)}
+                aria-label={open ? 'Close map assistant' : 'Open map assistant'}
+                title="Confused? Ask the map assistant"
+            >
+                {open ? '✕' : <SparkleIcon />}
+            </button>
         </div>
     );
 };

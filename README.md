@@ -297,6 +297,8 @@ artlook-ymu/
 - Fly-to-school from a partner's "Schools served" list.
 - Real school photography in the photo flyout (driven by `image_url`).
 
+
+
 ---
 
 *All figures in the app are labeled **illustrative sample data** — invented numbers that demonstrate the concept until real survey data is connected.*
